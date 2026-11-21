@@ -55,7 +55,7 @@
 
   function format(v, miejsca) {
     if (v === null || v === undefined || !isFinite(v)) return '–';
-    return Number(v).toFixed(miejsca === undefined ? 2 : miejsca).replace('.', ',');
+    return Number(v).toFixed(miejsca === undefined ? 2 : miejsca);
   }
 
   function doMerkatora(lon, lat) {
@@ -329,12 +329,12 @@
   }
 
   function htmlPogoda(o) {
-    return '<div class="rolnik-sekcja">Pogoda teraz' + (o.czas ? ' <small>(' + o.czas + ')</small>' : '') + '</div>' +
+    return '<div class="rolnik-sekcja">Weather now' + (o.czas ? ' <small>(' + o.czas + ')</small>' : '') + '</div>' +
       '<table class="rolnik-tab">' +
-      '<tr><td>Temperatura powietrza</td><td><b>' + format(o.temp, 1) + ' °C</b></td></tr>' +
-      '<tr><td>Opad w tej chwili</td><td>' + format(o.opadTeraz, 1) + ' mm</td></tr>' +
-      '<tr><td>Opady dziś (z prognozą do końca dnia)</td><td>' + format(o.opadDzis, 1) + ' mm</td></tr>' +
-      '<tr><td>Opady – ostatnie 7 dni</td><td>' + format(o.opad7, 1) + ' mm</td></tr></table>';
+      '<tr><td>Air temperature</td><td><b>' + format(o.temp, 1) + ' °C</b></td></tr>' +
+      '<tr><td>Precipitation right now</td><td>' + format(o.opadTeraz, 1) + ' mm</td></tr>' +
+      '<tr><td>Precipitation today (incl. forecast to end of day)</td><td>' + format(o.opadDzis, 1) + ' mm</td></tr>' +
+      '<tr><td>Precipitation – last 7 days</td><td>' + format(o.opad7, 1) + ' mm</td></tr></table>';
   }
 
   function htmlGleba(wart) {
@@ -342,24 +342,29 @@
       var w = wart[id];
       if (!w) return '';
       var m = w.meta, v = w.v;
-      var tekst = !v ? '–' : (v.tekst !== undefined ? v.tekst : format(v.liczba, m.miejsca) + (m.jednostka ? ' ' + m.jednostka : ''));
+      var tekst = !v ? '–' : (v.tekst !== undefined ? (KLASY_EN[v.tekst] || v.tekst) : format(v.liczba, m.miejsca) + (m.jednostka ? ' ' + m.jednostka : ''));
       return '<tr><td>' + (etykieta || m.nazwa) + '</td><td>' + tekst + '</td></tr>';
     }
     if (!meta.zrodla.gleba) return '';
     var p = wart.piasek && wart.piasek.v, i = wart.il && wart.il.v;
-    return '<div class="rolnik-sekcja">Gleba (SoilGrids, 0–30 cm)</div><table class="rolnik-tab">' +
-      wiersz('gleba_klasa', 'Typ gleby') + wiersz('porowatosc', 'Porowatość') +
-      (p && i ? '<tr><td>Piasek / pył / ił</td><td>' + Math.round(p.liczba) + ' / ' +
+    return '<div class="rolnik-sekcja">Soil (SoilGrids, 0–30 cm)</div><table class="rolnik-tab">' +
+      wiersz('gleba_klasa', 'Soil type') + wiersz('porowatosc', 'Porosity') +
+      (p && i ? '<tr><td>Sand / silt / clay</td><td>' + Math.round(p.liczba) + ' / ' +
         Math.max(0, Math.round(100 - p.liczba - i.liczba)) + ' / ' + Math.round(i.liczba) + ' %</td></tr>' : '') +
-      wiersz('gestosc', 'Gęstość objętościowa') + '</table>';
+      wiersz('gestosc', 'Bulk density') + '</table>';
   }
+
+  // klasy uziarnienia USDA – angielskie nazwy do dymka (w danych są po polsku)
+  var KLASY_EN = { 'piasek': 'sand', 'piasek gliniasty': 'loamy sand', 'glina piaszczysta': 'sandy loam', 'glina': 'loam',
+    'pył gliniasty': 'silt loam', 'pył': 'silt', 'glina piaszczysto-ilasta': 'sandy clay loam', 'glina ilasta': 'clay loam',
+    'glina pylasto-ilasta': 'silty clay loam', 'ił piaszczysty': 'sandy clay', 'ił pylasty': 'silty clay', 'ił': 'clay' };
 
   var WARSTWY_GLEBY = ['gleba_klasa', 'porowatosc', 'piasek', 'il', 'gestosc'];
 
   function poKliknieciu(A, pkt) {
-    var okno = A.otworzPopup(pkt, '<div class="rolnik-okno"><i>Wczytywanie danych…</i></div>');
+    var okno = A.otworzPopup(pkt, '<div class="rolnik-okno"><i>Loading data…</i></div>');
     var wart = {};
-    var czesc1 = '', czesc2 = '<div class="rolnik-sekcja">Pogoda teraz</div><i>Pobieranie…</i>';
+    var czesc1 = '', czesc2 = '<div class="rolnik-sekcja">Weather now</div><i>Loading…</i>';
     function odswiez() { okno.ustaw('<div class="rolnik-okno">' + czesc1 + czesc2 + '</div>'); }
     Promise.all(meta.warstwy.filter(function (w) {
       return w.pokrycie > 0 && WARSTWY_GLEBY.indexOf(w.id) >= 0;
@@ -368,7 +373,7 @@
         .catch(function () { wart[w.id] = { meta: w, v: null }; });
     })).then(function () { czesc1 = htmlGleba(wart); odswiez(); });
     pogodaTeraz(pkt).then(function (o) { czesc2 = htmlPogoda(o); odswiez(); })
-      .catch(function (err) { czesc2 = '<div class="rolnik-blad">Nie udało się pobrać pogody: ' + err.message + '</div>'; odswiez(); });
+      .catch(function (err) { czesc2 = '<div class="rolnik-blad">Could not load the weather: ' + err.message + '</div>'; odswiez(); });
   }
 
   // ================================================================== start

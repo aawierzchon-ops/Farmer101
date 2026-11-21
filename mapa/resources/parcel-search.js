@@ -159,8 +159,8 @@
 
   function formatArea(m2) {
     var ha = m2 / 10000;
-    return Math.round(m2).toLocaleString('pl-PL') + ' m² (' +
-      ha.toLocaleString('pl-PL', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ha)';
+    return Math.round(m2).toLocaleString('en-US') + ' m² (' +
+      ha.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ha)';
   }
 
   // Dymek składa się z części „działka” i części dodatkowej (np. dane z dodatku rolnik/rolnik.js)
@@ -194,21 +194,21 @@
       projection: map.getView().getProjection()
     });
     var rows = [
-      ['Numer działki', item.numer],
-      ['Identyfikator', item.teryt],
-      ['Obręb', item.obreb],
-      ['Gmina', item.gmina],
-      ['Powiat', item.powiat],
-      ['Województwo', item.woj],
-      ['Powierzchnia*', formatArea(area)]
+      ['Parcel number', item.numer],
+      ['Identifier', item.teryt],
+      ['Cadastral district', item.obreb],
+      ['Municipality', item.gmina],
+      ['County', item.powiat],
+      ['Voivodeship', item.woj],
+      ['Area*', formatArea(area)]
     ];
-    var html = '<div class="parcel-info"><b>Działka ' + esc(item.numer) + '</b><table>' +
+    var html = '<div class="parcel-info"><b>Parcel ' + esc(item.numer) + '</b><table>' +
       rows.map(function (r) {
         return '<tr><th>' + esc(r[0]) + '</th><td>' + esc(r[1]) + '</td></tr>';
       }).join('') +
-      '</table><small>* wyliczona z geometrii, może różnić się od powierzchni ewidencyjnej</small>' +
+      '</table><small>* calculated from geometry, may differ from the registered area</small>' +
       '<a href="https://mapy.geoportal.gov.pl/imap/Imgp_2.html?identifyParcel=' +
-      encodeURIComponent(item.teryt) + '" target="_blank" rel="noopener">Pokaż w Geoportalu</a></div>';
+      encodeURIComponent(item.teryt) + '" target="_blank" rel="noopener">Show in Geoportal</a></div>';
     showPopup(html, coord);
   }
 
@@ -220,11 +220,11 @@
     var coord = evt.coordinate;
     var ll = ol.proj.toLonLat(coord, map.getView().getProjection());
     popupParts.extra = '';
-    showPopup('<div class="parcel-info">Szukam działki…</div>', coord);
+    showPopup('<div class="parcel-info">Looking for a parcel…</div>', coord);
     parcelAt(ll[0].toFixed(7), ll[1].toFixed(7)).then(function (list) {
       if (id !== clickId) { return; }
       if (!list.length) {
-        showPopup('<div class="parcel-info">Brak działki w tym miejscu.</div>', coord);
+        showPopup('<div class="parcel-info">No parcel at this location.</div>', coord);
         return;
       }
       var f = drawParcel(list[0]);
