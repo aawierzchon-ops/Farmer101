@@ -1,42 +1,3 @@
-"""
-Prawdopodobieństwo suszy rolniczej z danych ERA5-Land / ERA5 pobieranych przez earthkit-data.
-
-Pobierane dane (Copernicus Climate Data Store, przez earthkit):
-  ERA5-Land, średnie miesięczne (reanalysis-era5-land-monthly-means), siatka 0.1°:
-    - temperatura powietrza 2 m             (t2m)
-    - temperatura punktu rosy 2 m           (d2m)  -> deficyt wilgotności powietrza (VPD)
-    - temperatura gleby, warstwa 1 (0-7 cm) (stl1)
-    - wilgotność objętościowa gleby, warstwy 1-3 (0-7, 7-28, 28-100 cm) (swvl1..3)
-    - opad całkowity                        (tp)
-    - parowanie potencjalne                 (pev)
-  ERA5 (reanalysis-era5-single-levels):
-    - typ gleby (slt) -> porowatość, polowa pojemność wodna, punkt trwałego więdnięcia
-      (tablica gleb modelu HTESSEL/ECMWF, z której korzysta ERA5-Land)
-
-Wskaźniki:
-  SMA    – standaryzowana anomalia wilgotności strefy korzeniowej (0-100 cm)
-  SPEI3  – standaryzowany 3-miesięczny klimatyczny bilans wodny P - PET
-  PAW    – udział wody dostępnej dla roślin: (θ - θwp) / (θfc - θwp)
-  SWDI   – Soil Water Deficit Index: 10·(θ - θfc) / (θfc - θwp)
-  SAT    – stopień nasycenia porów: θ / porowatość
-  VPDz   – standaryzowana anomalia deficytu wilgotności powietrza
-  STLz   – standaryzowana anomalia temperatury gleby
-Prawdopodobieństwo suszy = funkcja logistyczna z ważonej sumy wskaźników.
-UWAGA: wagi są eksperckie (heurystyczne), a nie skalibrowane na danych o stratach w uprawach.
-
-Wymagania:
-  pip install earthkit-data cdsapi xarray pandas numpy
-  oraz klucz CDS w pliku %USERPROFILE%\\.cdsapirc:
-      url: https://cds.climate.copernicus.eu/api
-      key: <twój-klucz-z-profilu-CDS>
-  (na stronie CDS trzeba też zaakceptować licencję zbiorów ERA5 i ERA5-Land).
-
-Przykłady:
-  python skrypty/susza.py --demo                      # dane syntetyczne, bez pobierania
-  python skrypty/susza.py                             # domyślny obszar, lata 1991-dziś
-  python skrypty/susza.py --area 51.8 20.6 51.45 21.2 --od 1995 --punkt 51.65 20.95
-"""
-
 import argparse
 import datetime as dt
 import sys
@@ -47,7 +8,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-# Obszar domyślny [N, W, S, E] – okolice Białobrzegów (pow. białobrzeski)
 DEFAULT_AREA = [51.80, 20.60, 51.45, 21.20]
 
 ERA5_LAND_DATASET = "reanalysis-era5-land-monthly-means"
@@ -62,11 +22,8 @@ ERA5_LAND_VARS = {
     "potential_evaporation": "pev",
 }
 
-# Grubość warstw gleby ERA5-Land [m] (strefa korzeniowa 0-100 cm)
 LAYER_THICKNESS = {"swvl1": 0.07, "swvl2": 0.21, "swvl3": 0.72}
 
-# Typ gleby ERA5 (slt) -> (porowatość, polowa pojemność wodna θfc, punkt więdnięcia θwp) [m3/m3]
-# źródło: dokumentacja IFS (HTESSEL), tablica parametrów hydraulicznych gleb
 SOIL_PARAMS = {
     1: ("gruboziarnista", 0.403, 0.244, 0.059),
     2: ("średnia", 0.439, 0.347, 0.151),
@@ -77,26 +34,22 @@ SOIL_PARAMS = {
     7: ("tropikalna organiczna", 0.472, 0.323, 0.151),
 }
 
-# Wagi modelu logistycznego (heurystyczne)
 WEIGHTS = {
     "intercept": -2.0,
-    "SMA": -1.2,     # sucha gleba (ujemna anomalia) -> wyższe ryzyko
-    "SPEI3": -0.8,   # ujemny bilans wodny -> wyższe ryzyko
-    "VPDz": 0.4,     # suche, gorące powietrze -> wyższe ryzyko
-    "STLz": 0.3,     # ciepła gleba -> wyższe ryzyko
-    "PAW": -1.5,     # mało wody dostępnej dla roślin -> wyższe ryzyko (liczone od 0.5)
+    "SMA": -1.2,
+    "SPEI3": -0.8,
+    "VPDz": 0.4,
+    "STLz": 0.3,
+    "PAW": -1.5,
 }
 
 CLASSES = [(0.2, "brak"), (0.4, "niskie"), (0.6, "umiarkowane"), (0.8, "wysokie"), (1.01, "bardzo wysokie")]
-GROWING_SEASON = range(4, 10)  # kwiecień–wrzesień
+GROWING_SEASON = range(4, 10)
 
 _ND = NormalDist()
 
 
-# --------------------------------------------------------------------------- pobieranie
-
 def normalize(ds: xr.Dataset) -> xr.Dataset:
-    """Ujednolica nazwy wymiarów (time/latitude/longitude) niezależnie od formatu i wersji earthkit."""
     ren = {}
     if "time" not in ds.dims:
         for name in ("valid_time", "forecast_reference_time", "date"):
@@ -107,7 +60,7 @@ def normalize(ds: xr.Dataset) -> xr.Dataset:
         if a in ds.dims:
             ren[a] = b
     ds = ds.rename(ren)
-    if "expver" in ds.dims and ds.sizes["expver"] > 1:  # mieszanka ERA5 / ERA5T
+    if "expver" in ds.dims and ds.sizes["expver"] > 1:
         ds = ds.mean("expver", skipna=True)
     for d in list(ds.dims):
         if d not in ("time", "latitude", "longitude") and ds.sizes[d] == 1:
@@ -120,14 +73,13 @@ def normalize(ds: xr.Dataset) -> xr.Dataset:
 
 
 def _cds(dataset: str, request: dict) -> xr.Dataset:
-    import earthkit.data as ekd  # import tutaj, żeby tryb --demo działał bez earthkit
+    import earthkit.data as ekd
 
     print(f"  CDS: {dataset} ({len(request.get('year', []))} lat, {len(request['variable'])} zmiennych)…")
     return normalize(ekd.from_source("cds", dataset, request).to_xarray())
 
 
 def fetch_era5_land(area, year_from: int, year_to: int) -> xr.Dataset:
-    """Średnie miesięczne ERA5-Land. Bieżący rok – tylko zakończone miesiące."""
     today = dt.date.today()
     base = {
         "product_type": ["monthly_averaged_reanalysis"],
@@ -169,11 +121,7 @@ def fetch_soil_type(area) -> xr.DataArray:
         slt = slt.isel(time=0, drop=True)
     return slt
 
-
-# --------------------------------------------------------------------------- dane demo
-
 def demo_data(area, year_from: int, year_to: int, seed: int = 1):
-    """Dane syntetyczne o strukturze ERA5-Land (do testów bez konta CDS)."""
     rng = np.random.default_rng(seed)
     n, w, s, e = area
     lat = np.round(np.arange(n, s - 1e-9, -0.1), 2)
@@ -181,9 +129,8 @@ def demo_data(area, year_from: int, year_to: int, seed: int = 1):
     time = pd.date_range(f"{year_from}-01-01", f"{year_to}-12-01", freq="MS")
     nt, ny, nx = len(time), len(lat), len(lon)
     month = time.month.values
-    season = np.cos(2 * np.pi * (month - 7) / 12)[:, None, None]  # +1 lipiec, -1 styczeń
+    season = np.cos(2 * np.pi * (month - 7) / 12)[:, None, None]
 
-    # wspólna anomalia pogodowa (AR1) + szum przestrzenny; susza wymuszona w ostatnim lecie
     anom = np.zeros(nt)
     for i in range(1, nt):
         anom[i] = 0.7 * anom[i - 1] + rng.normal(0, 0.6)
@@ -194,8 +141,8 @@ def demo_data(area, year_from: int, year_to: int, seed: int = 1):
     t2m = 281.0 + 10.0 * season + 1.2 * a
     d2m = t2m - (5.0 + 2.0 * season + 1.5 * a)
     stl1 = 282.0 + 11.0 * season + 1.4 * a
-    tp = np.clip((1.8 + 0.8 * season - 0.6 * a) / 1000, 0, None)          # m/dzień
-    pev = -np.clip((1.2 + 2.2 * season + 0.4 * a) / 1000, 0, None)        # m/dzień (ujemne)
+    tp = np.clip((1.8 + 0.8 * season - 0.6 * a) / 1000, 0, None)
+    pev = -np.clip((1.2 + 2.2 * season + 0.4 * a) / 1000, 0, None)
     sm = 0.30 - 0.05 * season - 0.035 * a
     ds = xr.Dataset(
         {
@@ -214,11 +161,7 @@ def demo_data(area, year_from: int, year_to: int, seed: int = 1):
                        coords={"latitude": lat, "longitude": lon}, dims=("latitude", "longitude"))
     return ds, slt
 
-
-# --------------------------------------------------------------------------- obliczenia
-
 def _gringorten_z(a: np.ndarray) -> np.ndarray:
-    """Nieparametryczna standaryzacja wzdłuż osi 0: rangi -> prawdop. Gringortena -> z ~ N(0,1)."""
     valid = ~np.isnan(a)
     n = valid.sum(axis=0)
     order = np.where(valid, a, np.inf).argsort(axis=0, kind="stable")
@@ -233,7 +176,6 @@ def _gringorten_z(a: np.ndarray) -> np.ndarray:
 
 
 def standardize(da: xr.DataArray) -> xr.DataArray:
-    """Anomalia standaryzowana osobno dla każdego miesiąca kalendarzowego."""
     out = xr.full_like(da, np.nan, dtype=float)
     months = da["time"].dt.month.values
     for m in range(1, 13):
@@ -244,7 +186,6 @@ def standardize(da: xr.DataArray) -> xr.DataArray:
 
 
 def soil_parameters(slt: xr.DataArray, like: xr.Dataset):
-    """Porowatość, θfc, θwp na siatce danych ERA5-Land (najbliższy sąsiad)."""
     slt = slt.sel(latitude=like["latitude"], longitude=like["longitude"], method="nearest")
     slt = slt.assign_coords(latitude=like["latitude"], longitude=like["longitude"])
     code = slt.round().fillna(0).astype(int)
@@ -268,9 +209,9 @@ def drought_indicators(ds: xr.Dataset, slt: xr.DataArray) -> xr.Dataset:
     t2m = ds["t2m"] - 273.15
     d2m = ds["d2m"] - 273.15
     stl1 = ds["stl1"] - 273.15
-    precip = ds["tp"] * days * 1000.0                         # mm/miesiąc
-    pet = (-ds["pev"]).clip(min=0) * days * 1000.0             # mm/miesiąc
-    cwb = precip - pet                                         # klimatyczny bilans wodny
+    precip = ds["tp"] * days * 1000.0
+    pet = (-ds["pev"]).clip(min=0) * days * 1000.0
+    cwb = precip - pet
     vpd = (vapour_pressure_kpa(t2m) - vapour_pressure_kpa(d2m)).clip(min=0)
 
     theta = sum(ds[k] * h for k, h in LAYER_THICKNESS.items()) / sum(LAYER_THICKNESS.values())
@@ -318,9 +259,6 @@ def swdi_class(v: float) -> str:
     if v > -10:
         return "silny"
     return "ekstremalny"
-
-
-# --------------------------------------------------------------------------- raport
 
 def summary_table(res: xr.Dataset) -> pd.DataFrame:
     cols = ["T2m_C", "Tgleby_C", "opad_mm", "PET_mm", "theta", "PAW", "SWDI", "SMA", "SPEI3", "VPDz", "P_susza"]

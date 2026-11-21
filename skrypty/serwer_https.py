@@ -1,22 +1,3 @@
-"""
-Serwer HTTPS dla mapy (folder, w którym leży ten plik).
-
-Udostępnia zbudowaną stronę z folderu _site/ (najpierw: python skrypty/zbuduj_strone.py).
-
-  python skrypty/serwer_https.py              # https://localhost:8443
-  python skrypty/serwer_https.py --port 9443
-  python skrypty/serwer_https.py --katalog mapa
-
-Przy pierwszym uruchomieniu tworzy własny certyfikat (folder _certyfikat/, poza udostępnianym
-folderem i w .gitignore, bo zawiera klucz prywatny), ważny dla
-localhost, 127.0.0.1 i adresów IP tego komputera w sieci lokalnej. Przeglądarka pokaże
-ostrzeżenie „połączenie nie jest prywatne” – trzeba kliknąć „Zaawansowane” → „Przejdź do…”
-(raz na przeglądarkę/urządzenie). Na telefonie w tej samej sieci Wi-Fi otwórz adres z IP
-komputera; przy pierwszym uruchomieniu Windows może zapytać o zgodę zapory dla Pythona –
-zezwól dla sieci prywatnych.
-
-Po zmianie sieci (inny adres IP) usuń folder _certyfikat/, żeby utworzyć nowy certyfikat.
-"""
 import argparse
 import datetime as dt
 import http.server
@@ -28,11 +9,11 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KATALOG_CERT = os.path.join(REPO, "_certyfikat")
-KATALOG = os.path.join(REPO, "_site")   # zmieniany opcją --katalog
+KATALOG = os.path.join(REPO, "_site")
 CERT = os.path.join(KATALOG_CERT, "mapa.crt")
 KLUCZ = os.path.join(KATALOG_CERT, "mapa.key")
 
-
+# ADRESY IP:
 def adresy_ip():
     ip = {"127.0.0.1"}
     try:
@@ -40,7 +21,7 @@ def adresy_ip():
             ip.add(info[4][0])
     except OSError:
         pass
-    try:  # adres używany do wyjścia na zewnątrz (nic nie jest wysyłane)
+    try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("10.255.255.255", 1))
         ip.add(s.getsockname()[0])
@@ -49,7 +30,7 @@ def adresy_ip():
         pass
     return sorted(ip)
 
-
+# CERTYFIKAT SSL:
 def utworz_certyfikat(ip):
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -79,20 +60,20 @@ def utworz_certyfikat(ip):
         f.write(cert.public_bytes(serialization.Encoding.PEM))
     print(f"Utworzono certyfikat dla: localhost, {', '.join(ip)}")
 
-
+# OBSŁUGA ŻĄDAŃ HTTP:
 class Obsluga(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=KATALOG, **k)
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-cache")   # po zmianach wystarczy zwykłe odświeżenie
+        self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
     def log_message(self, fmt, *args):
-        if args and str(args[1]).startswith(("4", "5")):   # pokazuj tylko błędy
+        if args and str(args[1]).startswith(("4", "5")):
             super().log_message(fmt, *args)
 
-
+# START SERWERA HTTPS:
 def main():
     global KATALOG
     if hasattr(sys.stdout, "reconfigure"):
@@ -104,7 +85,7 @@ def main():
 
     KATALOG = os.path.abspath(a.katalog)
     if not os.path.isfile(os.path.join(KATALOG, "index.html")):
-        sys.exit(f"Brak {KATALOG}{os.sep}index.html – najpierw zbuduj stronę: python skrypty/zbuduj_strone.py")
+        sys.exit(f"Brak {KATALOG}{os.sep}index.html – najpierw zbuduj stronę: python skrypty/strona.py")
 
     ip = adresy_ip()
     if not (os.path.exists(CERT) and os.path.exists(KLUCZ)):

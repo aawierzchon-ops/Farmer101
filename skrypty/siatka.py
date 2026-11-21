@@ -1,15 +1,3 @@
-"""
-Wspólna siatka mapy dla całej Polski i zapis warstw.
-
-Każda warstwa to 8-bitowy PNG w skali szarości na siatce EPSG:3857 (ten sam układ,
-co podkład w Leaflet, więc warstwy idealnie się pokrywają):
-  0       = brak danych
-  1..255  = wartość przeskalowana liniowo z zakresu [min, max]
-Do tego plik meta_<źródło>.json z opisem warstw; na końcu łączymy je w meta.json.
-
-Uruchomienie samodzielne (łączenie opisów):
-  python skrypty/siatka.py --polacz _dane
-"""
 import argparse
 import glob
 import json
@@ -19,13 +7,13 @@ import os
 import numpy as np
 from PIL import Image
 from rasterio.transform import from_origin
-
+# PARAMETRY SIATKI:
 CRS_MAPY = "EPSG:3857"
-BBOX_WGS = (14.0, 48.9, 24.3, 55.0)   # lon_min, lat_min, lon_max, lat_max (Polska z zapasem)
-PIKSEL_M = 800.0                      # metry w EPSG:3857, czyli ok. 500 m w terenie na szer. 52°
+BBOX_WGS = (14.0, 48.9, 24.3, 55.0)
+PIKSEL_M = 800.0
 R = 6378137.0
 
-
+# ODWZOROWANIE MERCATORA:
 def _merc(lon, lat):
     return (math.radians(lon) * R, math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)) * R)
 
@@ -33,7 +21,7 @@ def _merc(lon, lat):
 def _wgs(x, y):
     return (math.degrees(x / R), math.degrees(2 * math.atan(math.exp(y / R)) - math.pi / 2))
 
-
+# DEFINICJA RASTRA:
 def siatka():
     x0, y0 = _merc(BBOX_WGS[0], BBOX_WGS[1])
     x1, y1 = _merc(BBOX_WGS[2], BBOX_WGS[3])
@@ -49,7 +37,6 @@ def siatka():
         "szer": szer, "wys": wys,
         "transform": from_origin(xmin, ymax, PIKSEL_M, PIKSEL_M),
         "xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax, "piksel_m": PIKSEL_M,
-        # narożniki dla L.imageOverlay: [[płd, zach], [płn, wsch]]
         "granice_wgs": [[lat_s, lon_w], [lat_n, lon_e]],
     }
 
@@ -60,10 +47,7 @@ def pusta(s, wartosc=np.nan, dtype="float32"):
 
 def zapisz_warstwe(katalog, id_, dane, *, nazwa, jednostka, vmin, vmax, paleta, grupa,
                    opis="", data="", ukryta=False, kategorie=None, miejsca=2):
-    """Zapisuje warstwę jako PNG i zwraca jej opis do meta.json.
 
-    kategorie: lista nazw dla warstw kategorycznych (wartości 1..N w `dane`, 0/NaN = brak).
-    """
     os.makedirs(katalog, exist_ok=True)
     dane = np.asarray(dane, dtype="float64")
     braki = ~np.isfinite(dane)
@@ -89,7 +73,7 @@ def zapisz_meta(katalog, zrodlo, warstwy, **dodatkowe):
     with open(os.path.join(katalog, f"meta_{zrodlo}.json"), "w", encoding="utf-8") as f:
         json.dump({"zrodlo": zrodlo, "warstwy": warstwy, **dodatkowe}, f, ensure_ascii=False, indent=1)
 
-
+# SCALANIE METADANYCH:
 def polacz_meta(katalog):
     s = siatka()
     from datetime import datetime, timezone
