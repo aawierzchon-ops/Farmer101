@@ -1,6 +1,0 @@
-# Only for analysis/drought_probability.py (not needed by the map or scripts/)
-earthkit-data
-cdsapi
-xarray
-pandas
-numpy
