@@ -1,4 +1,4 @@
-# Farmer101 – a drought map for farmers (all of Poland)
+# Farmer101
 
 An interactive map of Poland for farmers. It shows:
 - cadastral parcels;
