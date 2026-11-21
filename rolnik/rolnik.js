@@ -1,6 +1,6 @@
 /*
  * Dodatek „Rolnik” do mapy wyeksportowanej z qgis2web (OpenLayers lub Leaflet).
- *  - panel z warstwami analitycznymi (Landsat 8/9, ERA5-Land, gleba) + legenda,
+ *  - panel z warstwami analitycznymi (ERA5-Land, gleba) + legenda,
  *  - kliknięcie w dowolny punkt: gleba (z warstw) + aktualna temperatura i opady z Open-Meteo.
  * Warstwy to 8-bitowe PNG w EPSG:3857 opisane w dane/meta.json (tworzą je skrypty w skrypty/).
  */
@@ -243,7 +243,7 @@
     meta.warstwy.forEach(function (w) {
       if (!w.ukryta) (grupy[w.grupa] = grupy[w.grupa] || []).push(w);
     });
-    var kolejnosc = ['Landsat 8/9', 'ERA5-Land', 'Gleba'];
+    var kolejnosc = ['Landsat', 'ERA5-Land', 'Gleba'];
     var poz = function (g) { var i = kolejnosc.indexOf(g); return i < 0 ? 99 : i; };
     Object.keys(grupy).sort(function (a, b) { return poz(a) - poz(b); }).forEach(function (g) {
       html += '<div class="rolnik-grupa">' + g + '</div>';
