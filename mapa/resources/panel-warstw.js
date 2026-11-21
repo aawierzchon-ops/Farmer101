@@ -3,7 +3,6 @@
  *  - „Layers”: warstwy qgis2web + warstwy analityczne z rolnik.js (Landsat, ERA5, gleba) + mapy zagrożenia,
  *  - „Detailed data”: na starcie pusta; wyniki poszczególnych parametrów dla zaznaczonych działek
  *    (wypełnia resources/analiza-cdi.js po „Calculate”),
- *  - „Crops”,
  *  - „Final analysis”: zaznaczanie działek i wynik końcowy (resources/analiza-cdi.js).
  * Do tego logo w prawym dolnym rogu.
  * Ładowany w index.html po qgis2web.js (korzysta z globalnych `map` i `layerSwitcher`).
@@ -56,7 +55,6 @@
   window.panelSzczegoly = nowyPanel('Detailed data', 'panel-szczegoly',
     '<div class="panel-pusty">Select parcels in “Final analysis” and click “Calculate” – the results of each ' +
     'parameter will appear here.</div>');
-  nowyPanel('Crops', 'panel-uprawy', '<div class="panel-pusty">Coming soon.</div>');
   window.panelAnalizy = nowyPanel('Final analysis', 'panel-analiza-koncowa', '<div class="panel-pusty">Loading…</div>');
 
   // logo w prawym dolnym rogu

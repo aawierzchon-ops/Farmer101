@@ -99,19 +99,51 @@
     '.cdi-uwaga{font-size:11px;color:#666;margin-top:6px}' +
     '.cdi-sekcja{margin:8px 0 2px;font-weight:600;color:#2e5e2a;border-bottom:1px solid #e3e3e3;font-size:12.5px}' +
     '.cdi-sekcja small{font-weight:400;color:#777}' +
+    '.cdi-ocena{display:inline-block;min-width:30px;text-align:center;border-radius:3px;padding:0 4px;color:#fff;font-weight:600}' +
+    '.cdi-ocena.jasna{color:#222}' +
+    '.cdi-skala{position:relative;height:12px;border-radius:3px;margin:2px 0 1px}' +
+    '.cdi-skala i{position:absolute;top:-4px;width:4px;height:20px;background:#222;border:1px solid #fff;border-radius:2px;transform:translateX(-50%)}' +
+    '.cdi-skala-opis{display:flex;justify-content:space-between;font-size:11px;color:#555;margin-bottom:6px}' +
     '.cdi-zaznaczanie .ol-viewport{cursor:copy}';
   document.head.appendChild(css);
 
+  // ------------------------------------------------------------------ skala kolorów: 0 = dobrze (zielony) … 1 = źle (czerwony)
+  var SKALA = [[26, 150, 65], [166, 217, 106], [255, 217, 47], [253, 174, 97], [215, 25, 28]];
+  function kolorSkali(t, alfa) {
+    t = Math.min(Math.max(isFinite(t) ? t : 0, 0), 1) * (SKALA.length - 1);
+    var i = Math.min(Math.floor(t), SKALA.length - 2), f = t - i;
+    var c = [0, 1, 2].map(function (k) { return Math.round(SKALA[i][k] + f * (SKALA[i + 1][k] - SKALA[i][k])); });
+    return alfa === undefined ? 'rgb(' + c.join(',') + ')' : 'rgba(' + c.join(',') + ',' + alfa + ')';
+  }
+  var GRADIENT = 'linear-gradient(to right,' + SKALA.map(function (c) { return 'rgb(' + c.join(',') + ')'; }).join(',') + ')';
+  // wartość w kolorowej plakietce wg udziału punktów zagrożenia t (0 = dobrze, 1 = źle)
+  function ocena(tekst, t) {
+    if (!isFinite(t)) return tekst;
+    return '<span class="cdi-ocena' + (t > 0.3 && t < 0.7 ? ' jasna' : '') + '" style="background:' + kolorSkali(t) + '">' + tekst + '</span>';
+  }
+  // pasek skali z zaznaczonym wynikiem
+  function pasekSkali(t, lewy, prawy) {
+    return '<div class="cdi-skala" style="background:' + GRADIENT + '">' + (isFinite(t) ? '<i style="left:' + (100 * t).toFixed(1) + '%"></i>' : '') +
+      '</div><div class="cdi-skala-opis"><span>' + lewy + '</span><span>' + prawy + '</span></div>';
+  }
+  // udział punktów zagrożenia działki (0 = dobrze, 1 = źle)
+  function ocenaDzialki(d) {
+    var am = analizaMeta(), p = d && d.wynik && d.wynik.punkty;
+    return am && p && p.wynik !== null ? p.wynik / am.maks_punktow : NaN;
+  }
+
   // ------------------------------------------------------------------ warstwa zaznaczonych działek
+  // po obliczeniu działka ma kolor wg wyniku końcowego: zielony = dobrze … czerwony = źle
   function stylDzialki(f) {
-    var d = f.get('dzialka'), klasa = d && d.wynik && d.wynik.punkty ? d.wynik.punkty.klasa : null;
-    var kolor = klasa ? KOLORY_KLAS[klasa - 1] : '#1565c0';
+    var d = f.get('dzialka'), t = ocenaDzialki(d), jest = isFinite(t);
+    var kolor = jest ? kolorSkali(t) : '#1565c0';
     return new ol.style.Style({
       stroke: new ol.style.Stroke({ color: kolor, width: 3 }),
-      fill: new ol.style.Fill({ color: kolor + '33' }),
+      fill: new ol.style.Fill({ color: jest ? kolorSkali(t, 0.55) : 'rgba(21,101,192,0.2)' }),
       text: new ol.style.Text({
-        text: d ? d.numer : '', font: 'bold 14px Arial, sans-serif', overflow: true,
-        fill: new ol.style.Fill({ color: '#fff' }), stroke: new ol.style.Stroke({ color: klasa === 2 ? '#8a7400' : kolor, width: 4 })
+        text: d ? d.numer + (jest ? '\n' + d.wynik.punkty.wynik + ' pts' : '') : '',
+        font: 'bold 14px Arial, sans-serif', overflow: true,
+        fill: new ol.style.Fill({ color: '#fff' }), stroke: new ol.style.Stroke({ color: 'rgba(0,0,0,0.7)', width: 4 })
       })
     });
   }
@@ -572,15 +604,18 @@
     var zPunktami = dane.filter(function (d) { return d.wynik.punkty && d.wynik.punkty.wynik !== null; });
     if (am && zPunktami.length) {
       var wynikP = Math.round(srW(zPunktami, function (d) { return d.wynik.punkty.wynik; }));
-      var klasa = klasaZagrozenia(am, wynikP);
-      h += '<div class="cdi-poziom' + (klasa === 2 ? ' jasny' : '') + '" style="background:' + (klasa ? KOLORY_KLAS[klasa - 1] : '#777') + '">' +
+      var klasa = klasaZagrozenia(am, wynikP), tObszar = wynikP / am.maks_punktow;
+      h += '<div class="cdi-poziom' + (tObszar > 0.3 && tObszar < 0.7 ? ' jasny' : '') + '" style="background:' + kolorSkali(tObszar) + '">' +
         'Hazard: ' + esc(klasa ? am.klasy[klasa - 1].nazwa : '–') + ' · ' + wynikP + ' / ' + am.maks_punktow + ' pts' +
         '<small>' + esc(nazwaUprawy(uprawa)) + ' · ' + dane.length + (dane.length === 1 ? ' parcel' : ' parcels') + ', ' +
         ha.toFixed(2) + ' ha · data to ' + dataD + '</small></div>';
+      h += pasekSkali(tObszar, '0 pts – good', am.maks_punktow + ' pts – bad');
       h += '<table class="cdi-tab"><tr><th>Criterion</th><th>Points</th></tr>' + am.kryteria.map(function (k, i) {
         var pk = srW(zPunktami, function (d) { var x = d.wynik.punkty.wiersze[i]; return x.punkty === null ? NaN : x.punkty; });
-        return '<tr><td>' + esc(k.nazwa) + '</td><td>' + (isFinite(pk) ? f1(pk) : '–') + ' / ' + Math.max.apply(null, k.punkty) + '</td></tr>';
-      }).join('') + '<tr class="obszar"><td>Total (scaled to ' + am.maks_punktow + ')</td><td>' + wynikP + ' / ' + am.maks_punktow + '</td></tr></table>';
+        var max = Math.max.apply(null, k.punkty);
+        return '<tr><td>' + esc(k.nazwa) + '</td><td>' + ocena((isFinite(pk) ? f1(pk) : '–') + ' / ' + max, pk / max) + '</td></tr>';
+      }).join('') + '<tr class="obszar"><td>Total (scaled to ' + am.maks_punktow + ')</td><td>' +
+        ocena(wynikP + ' / ' + am.maks_punktow, tObszar) + '</td></tr></table>';
     } else {
       h += '<div class="cdi-uwaga">Multi-criteria scoring unavailable (no analysis data on the map or missing soil data).</div>';
     }
@@ -602,7 +637,7 @@
       h += '<table class="cdi-tab" style="margin-top:6px"><tr><th>Parcel</th><th>Points</th><th>Hazard</th><th>CDI</th></tr>' +
         dane.map(function (d) {
           var p = d.wynik.punkty, c = POZIOMY_CDI[d.wynik.cdi];
-          return '<tr><td title="' + esc(d.teryt) + '">' + esc(d.numer) + '</td><td>' + (p && p.wynik !== null ? p.wynik : '–') +
+          return '<tr><td title="' + esc(d.teryt) + '">' + esc(d.numer) + '</td><td>' + (p && p.wynik !== null ? ocena(p.wynik, ocenaDzialki(d)) : '–') +
             '</td><td>' + znaczekKlasy(am, p && p.klasa) + '</td><td><span class="cdi-kropka" style="background:' + c.kolor + '"></span>' +
             c.nazwa + '</td></tr>';
         }).join('') + '</table>';
@@ -633,7 +668,7 @@
     var punktyKr = function (i) {
       return function (d) {
         var p = d.wynik.punkty, x = p && p.wiersze[i];
-        return x && x.punkty !== null ? x.punkty + ' pt' : '–';
+        return x && x.punkty !== null ? ocena(x.punkty + ' / ' + x.max, x.punkty / x.max) : '–';
       };
     };
     var idx = {};
