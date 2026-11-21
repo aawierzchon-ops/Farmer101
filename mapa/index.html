@@ -85,6 +85,32 @@
             margin: 0;
         }
         </style>
+        <style>
+        /* Panel "Warstwy" (resources/panel-warstw.js) - wyglad jak panel "Analiza dla rolnika" */
+        .panele-lewy-dol { position: absolute; left: 8px; bottom: 34px; z-index: 5; display: flex; flex-direction: column;
+          align-items: flex-start; gap: 8px; max-height: calc(100% - 110px); pointer-events: none; }
+        .panele-lewy-dol > * { pointer-events: auto; }
+        .panele-lewy-dol .rolnik-panel.rolnik-panel { position: static; display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
+        .panele-lewy-dol .rolnik-panel .rolnik-naglowek { flex: none; }
+        .panele-lewy-dol .rolnik-panel .rolnik-tresc { max-height: none; min-height: 0; overflow-y: auto; }
+        .panele-lewy-dol .rolnik-panel.zwiniety .rolnik-tresc { display: none; }
+        .panel-warstw { background: #fff; width: 270px; font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+          color: #222; box-shadow: 0 1px 6px rgba(0,0,0,.3); border-radius: 6px; overflow: hidden; text-align: left; }
+        .panel-warstw .rolnik-naglowek { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px;
+          background: #2e5e2a; color: #fff; font-weight: 600; }
+        .panel-warstw .rolnik-zwin { background: none; border: 0; color: #fff; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; margin: 0; }
+        .panel-warstw .rolnik-tresc { padding: 6px 10px 8px; }
+        .panel-warstw-lista ul { list-style: none; margin: 0; padding: 0; }
+        .panel-warstw-lista ul ul { padding-left: 14px; }
+        .panel-warstw-lista li { margin: 2px 0; }
+        .panel-warstw-lista li.group > label { font-weight: 600; color: #2e5e2a; }
+        .panel-warstw-lista li.group { margin-top: 6px; }
+        .panel-warstw-lista label { cursor: pointer; }
+        .panel-warstw-lista input { margin: 0 5px 0 0; vertical-align: middle; }
+        .panel-warstw-lista img { max-width: 22px; max-height: 22px; vertical-align: middle; }
+        .panel-warstw-lista .layer-switcher-fold > button, .panel-warstw-lista .group > button { display: none; }
+        @media (max-width: 600px) { .panele-lewy-dol .rolnik-panel { width: min(270px, calc(100vw - 70px)); } }
+        </style>
         <title></title>
     </head>
     <body>
@@ -104,5 +130,6 @@
         <script src="./resources/Autolinker.min.js"></script>
         <script src="./resources/qgis2web.js"></script>
         <script src="./resources/parcel-search.js"></script>
+        <script src="./resources/panel-warstw.js"></script>
     </body>
 </html>

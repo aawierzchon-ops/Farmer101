@@ -258,8 +258,9 @@
       'Dane: Landsat – USGS · ERA5-Land – Copernicus/ECMWF przez <a href="https://open-meteo.com" target="_blank">Open-Meteo</a> · ' +
       'gleba – SoilGrids/ISRIC</div></div>';
     div.innerHTML = html;
-    if (window.innerWidth < 700) div.classList.add('zwiniety');
-    div.querySelector('.rolnik-zwin').onclick = function () { div.classList.toggle('zwiniety'); };
+    var zwin = div.querySelector('.rolnik-zwin');
+    if (window.innerWidth < 700) { div.classList.add('zwiniety'); zwin.textContent = '+'; }
+    zwin.onclick = function () { zwin.textContent = div.classList.toggle('zwiniety') ? '+' : '–'; };
     var suwak = div.querySelector('.rolnik-przezr input');
     div.querySelectorAll('input[name=rolnik-w]').forEach(function (r) {
       r.onchange = function () { pokazWarstwe(A, r.value, div, +suwak.value); };
