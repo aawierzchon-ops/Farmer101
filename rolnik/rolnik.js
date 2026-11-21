@@ -772,6 +772,15 @@
     return null;
   }
 
+  // wartość warstwy w punkcie (lon, lat) - dla panelu Final analysis (resources/analiza-cdi.js)
+  window.rolnikWartosc = function (id, lon, lat) {
+    if (!meta) return Promise.resolve(null);
+    var w = meta.warstwy.filter(function (x) { return x.id === id; })[0];
+    if (!w || !w.pokrycie) return Promise.resolve(null);
+    var m = doMerkatora(lon, lat);
+    return wczytajWarstwe(w).then(function (st) { return wartoscW(st, m[0], m[1]); }).catch(function () { return null; });
+  };
+
   function start() {
     var zrodloMeta = (WBUDOWANE && WBUDOWANE.meta) ? Promise.resolve(WBUDOWANE.meta)
       : fetch(DANE + 'meta.json', { cache: 'no-cache' }).then(function (r) { return r.json(); });
