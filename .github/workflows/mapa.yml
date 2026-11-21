@@ -1,0 +1,65 @@
+name: Mapa Qgis – dane i publikacja
+
+on:
+  schedule:
+    - cron: "37 3 * * *"        # codziennie ok. 4:37 czasu polskiego – świeże dane Landsat i ERA5
+  workflow_dispatch:             # przycisk "Run workflow"
+  push:
+    branches: [main]
+    paths: ["mapa Qgis/**", ".github/workflows/**"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  budowa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "mapa Qgis/dodatek_rolnik/requirements.txt"
+
+      - name: Instalacja bibliotek
+        run: pip install -r "mapa Qgis/dodatek_rolnik/requirements.txt"
+
+      # Landsat 8/9 + ERA5 pobierane od nowa; gleba (SoilGrids) jest już w dodatek_rolnik/_dane.
+      # Gdyby pobieranie się nie udało, publikowana jest wersja index.html z repozytorium.
+      - name: Nowe dane i wstawienie do index.html
+        working-directory: "mapa Qgis"
+        continue-on-error: true
+        run: python odswiez_dane_rolnik.py
+
+      - name: Złożenie strony
+        run: |
+          mkdir -p _site
+          cd "mapa Qgis"
+          for f in index.html layers resources styles images webfonts; do
+            if [ -e "$f" ]; then cp -r "$f" ../_site/; fi
+          done
+          touch ../_site/.nojekyll
+          ls -la ../_site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  publikacja:
+    needs: budowa
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
