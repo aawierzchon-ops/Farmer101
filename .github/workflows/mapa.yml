@@ -1,4 +1,4 @@
-name: Mapa dla rolnika – budowa i publikacja
+name: Map
 
 on:
   schedule:
@@ -47,23 +47,14 @@ jobs:
       - name: Landsat 8/9 - NDVI, NDWI, NDDI, temperatura powierzchni
         run: python skrypty/landsat_mapa.py --wyjscie _dane --chmury 10 --dni 90
 
-      # Archiwum dziennych opadów (suwak czasu na mapie) - przechowywane między uruchomieniami,
-      # każdego dnia dopisywane są nowe dni (zapis pod nowym kluczem, odczyt najnowszego)
-      - name: Opady dzienne - pamięć podręczna
-        uses: actions/cache@v4
-        with:
-          path: _cache_opady
-          key: opady-dzienne-${{ github.run_id }}
-          restore-keys: opady-dzienne-
-
       - name: ERA5-Land - temperatura i wilgotność gleby, opady
-        run: python skrypty/era5_mapa.py --wyjscie _dane --archiwum _cache_opady/opady_dzienne.json
+        run: python skrypty/era5_mapa.py --wyjscie _dane
 
       - name: Złożenie strony (eksport qgis2web + dodatek + dane)
         run: |
           cp _cache_gleba/* _dane/
           python skrypty/siatka.py --polacz _dane
-          python skrypty/zbuduj_strone.py --mapa mapa --dane _dane --wyjscie _site
+          python skrypty/strona.py --mapa mapa --dane _dane --wyjscie _site
 
       - uses: actions/upload-pages-artifact@v5
         with:
