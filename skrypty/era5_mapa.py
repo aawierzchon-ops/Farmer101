@@ -119,13 +119,13 @@ def main():
     opis = f"ERA5-Land (Copernicus) przez Open-Meteo, średnia 3 dni do {ostatni}"
     W = a.wyjscie
     warstwy = [
-        S.zapisz_warstwe(W, "t_gleby_era5", na_siatke(t), nazwa="Temperatura gleby 0–7 cm (ERA5-Land)",
+        S.zapisz_warstwe(W, "t_gleby_era5", na_siatke(t), nazwa="Soil temperature 0–7 cm (ERA5-Land)",
                          jednostka="°C", vmin=-10, vmax=30, paleta="temperatura", grupa="ERA5-Land",
-                         data=opis, miejsca=1, opis="Średnia dobowa z ostatnich 3 dostępnych dni."),
-        S.zapisz_warstwe(W, "wilg_gleby_era5", na_siatke(w), nazwa="Wilgotność gleby 0–7 cm (ERA5-Land)",
+                         data=opis, miejsca=1, opis="Daily average for the last 3 available days."),
+        S.zapisz_warstwe(W, "wilg_gleby_era5", na_siatke(w), nazwa="Soil moisture 0–7 cm (ERA5-Land)",
                          jednostka="m³/m³", vmin=0.05, vmax=0.50, paleta="wilgotnosc", grupa="ERA5-Land",
-                         data=opis, miejsca=2, opis="Objętościowa zawartość wody w wierzchniej warstwie gleby."),
-        S.zapisz_warstwe(W, "opady_7d_era5", na_siatke(o), nazwa="Opady – suma 7 dni (ERA5)",
+                         data=opis, miejsca=2, opis="Volumetric water content in the topsoil layer."),
+        S.zapisz_warstwe(W, "opady_7d_era5", na_siatke(o), nazwa="Downfall – sum from last 7 days (ERA5)",
                          jednostka="mm", vmin=0, vmax=60, paleta="opady", grupa="ERA5-Land",
                          data=f"ERA5, {start} – {koniec}", miejsca=1),
     ]
