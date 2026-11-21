@@ -275,12 +275,184 @@
     var leg = div.querySelector('.rolnik-legenda');
     if (!id) { A.ukryjObraz(); leg.innerHTML = ''; return; }
     var w = meta.warstwy.filter(function (x) { return x.id === id; })[0];
+    // warstwa z osią czasu (opady dzienne) - suwak okresu; gdy brak archiwum, zwykła warstwa
+    if (w.czas && !WBUDOWANE) { pokazOkres(A, w, div); return; }
+    pokazStala(A, w, div, przezr);
+  }
+
+  function pokazStala(A, w, div, przezr, uwaga) {
+    var id = w.id, leg = div.querySelector('.rolnik-legenda');
     leg.innerHTML = '<i>Wczytywanie…</i>';
     wczytajWarstwe(w).then(function (st) {
       if (aktywna !== id) return;          // użytkownik zdążył wybrać inną warstwę
       A.pokazObraz(obrazKolorowy(st), przezr);
-      leg.innerHTML = legenda(w);
+      leg.innerHTML = (uwaga ? '<div class="rolnik-blad">' + uwaga + '</div>' : '') + legenda(w);
     }).catch(function (e) { leg.innerHTML = '<span class="rolnik-blad">' + e.message + '</span>'; });
+  }
+
+  // ================================================================== oś czasu: opady dzienne
+  // Archiwum (skrypty/era5_mapa.py -> dane/opady_dzienne.json): dzienne opady ERA5 na siatce 0,25°,
+  // uint16 w dziesiątych częściach mm (base64). W przeglądarce sumujemy wybrany okres, interpolujemy
+  // dwuliniowo na siatkę mapy (EPSG:3857) i kolorujemy.
+
+  var archiwa = {};
+  function wczytajArchiwum(w) {
+    if (archiwa[w.id]) return archiwa[w.id];
+    archiwa[w.id] = fetch(DANE + w.czas.plik + '?v=' + encodeURIComponent(meta.wersja || ''))
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (a) {
+        var bin = atob(a.dane), n = bin.length >> 1, v = new Uint16Array(n), i;
+        for (i = 0; i < n; i++) v[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+        a.v = v; a.n = a.nx * a.ny; delete a.dane;
+        a.srednie = a.dni.map(function (_, d) {     // średni opad dzienny w kadrze (do wykresu)
+          var s = 0, ile = 0, off = d * a.n;
+          for (var k = 0; k < a.n; k++) { var x = v[off + k]; if (x !== a.brak) { s += x; ile++; } }
+          return ile ? s * a.skala / ile : 0;
+        });
+        return a;
+      });
+    archiwa[w.id].catch(function () { delete archiwa[w.id]; });
+    return archiwa[w.id];
+  }
+
+  function sumaOkresu(a, i0, i1) {
+    var s = new Float32Array(a.n), ile = new Uint16Array(a.n), d, k;
+    for (d = i0; d <= i1; d++) {
+      var off = d * a.n;
+      for (k = 0; k < a.n; k++) { var x = a.v[off + k]; if (x !== a.brak) { s[k] += x * a.skala; ile[k]++; } }
+    }
+    for (k = 0; k < a.n; k++) if (!ile[k]) s[k] = NaN;
+    return s;
+  }
+
+  var LADNE = [2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300, 400, 500, 750, 1000];
+  function ladnaSkala(suma) {
+    var x = Array.prototype.filter.call(suma, isFinite).sort(function (p, q) { return p - q; });
+    var p98 = x.length ? x[Math.floor(0.98 * (x.length - 1))] : 10;
+    for (var i = 0; i < LADNE.length; i++) if (LADNE[i] >= p98) return LADNE[i];
+    return LADNE[LADNE.length - 1];
+  }
+
+  function obrazOkresu(a, suma, vmax, w) {
+    var s = meta.siatka, W = s.szer, H = s.wys, c, r;
+    if (!a.fi) {
+      a.fi = new Float32Array(W); a.fj = new Float32Array(H);
+      for (c = 0; c < W; c++) a.fi[c] = ((s.xmin + (c + 0.5) * s.piksel_m) / R * 180 / Math.PI - a.lon0) / a.krok;
+      for (r = 0; r < H; r++) {
+        var y = s.ymax - (r + 0.5) * s.piksel_m;
+        a.fj[r] = (a.lat0 - (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI) / a.krok;
+      }
+      a.canvas = document.createElement('canvas'); a.canvas.width = W; a.canvas.height = H;
+      a.ctx = a.canvas.getContext('2d'); a.obraz = a.ctx.createImageData(W, H);
+    }
+    var lut = tablicaKolorow({ paleta: w.paleta }), d = a.obraz.data, nx = a.nx, ny = a.ny;
+    for (r = 0; r < H; r++) {
+      var fj = a.fj[r], j0 = Math.min(Math.max(Math.floor(fj), 0), ny - 2), fy = Math.min(Math.max(fj - j0, 0), 1);
+      for (c = 0; c < W; c++) {
+        var fi = a.fi[c], i0 = Math.min(Math.max(Math.floor(fi), 0), nx - 2), fx = Math.min(Math.max(fi - i0, 0), 1);
+        var k = j0 * nx + i0;
+        var v = (suma[k] * (1 - fx) + suma[k + 1] * fx) * (1 - fy) + (suma[k + nx] * (1 - fx) + suma[k + nx + 1] * fx) * fy;
+        var o = (r * W + c) * 4;
+        if (v !== v) { d[o + 3] = 0; continue; }       // NaN - brak danych
+        var q = (1 + Math.round(Math.min(Math.max(v / vmax, 0), 1) * 254)) * 4;
+        d[o] = lut[q]; d[o + 1] = lut[q + 1]; d[o + 2] = lut[q + 2]; d[o + 3] = 255;
+      }
+    }
+    a.ctx.putImageData(a.obraz, 0, 0);
+    return a.canvas.toDataURL('image/png');
+  }
+
+  function ileDni(n) { return n + (n === 1 ? ' day' : ' days'); }
+
+  function pokazOkres(A, w, div) {
+    var leg = div.querySelector('.rolnik-legenda');
+    leg.innerHTML = '<i>Loading…</i>';
+    wczytajArchiwum(w).then(function (a) {
+      if (aktywna !== w.id) return;
+      var n = a.dni.length;
+      var i1 = n - 1, i0 = Math.max(0, n - (w.czas.domyslnie_dni || 7));
+      leg.innerHTML =
+        '<div class="rolnik-czas">' +
+        '<div class="rolnik-czas-okres"></div>' +
+        '<canvas class="rolnik-czas-wykres" width="250" height="46" title="Drag to select a period"></canvas>' +
+        '<label class="rolnik-czas-suwak"><span>From</span><input type="range" class="rolnik-czas-od" min="0" step="1"></label>' +
+        '<label class="rolnik-czas-suwak"><span>To</span><input type="range" class="rolnik-czas-do" min="0" step="1"></label>' +
+        '<div class="rolnik-czas-przyciski">' +
+        [1, 7, 14, 30].filter(function (k) { return k < n; }).map(function (k) {
+          return '<button type="button" data-dni="' + k + '">' + ileDni(k) + '</button>';
+        }).join('') + '<button type="button" data-dni="' + n + '">All</button></div>' +
+        '</div><div class="rolnik-czas-leg"></div>';
+      var od = leg.querySelector('.rolnik-czas-od'), doo = leg.querySelector('.rolnik-czas-do');
+      var opis = leg.querySelector('.rolnik-czas-okres'), wyk = leg.querySelector('.rolnik-czas-wykres');
+      var legDol = leg.querySelector('.rolnik-czas-leg');
+      od.max = doo.max = n - 1;
+      var zegar = null;
+
+      function wykres() {
+        var g = wyk.getContext('2d'), Wd = wyk.width, Hd = wyk.height, maks = Math.max.apply(null, a.srednie) || 1;
+        var bw = Wd / n;
+        g.clearRect(0, 0, Wd, Hd);
+        g.fillStyle = 'rgba(46,94,42,.12)';
+        g.fillRect(i0 * bw, 0, (i1 - i0 + 1) * bw, Hd);
+        for (var d = 0; d < n; d++) {
+          var h = Math.max(1, a.srednie[d] / maks * (Hd - 4)), odstep = bw > 3 ? 0.5 : 0;
+          g.fillStyle = (d >= i0 && d <= i1) ? '#2171b5' : '#c6dbef';
+          g.fillRect(d * bw + odstep, Hd - h, Math.max(1, bw - 2 * odstep), h);
+        }
+      }
+
+      function rysuj(natychmiast) {
+        od.value = i0; doo.value = i1;
+        opis.innerHTML = '<b>' + a.dni[i0] + (i1 > i0 ? ' – ' + a.dni[i1] : '') + '</b> (' + ileDni(i1 - i0 + 1) + ')';
+        wykres();
+        clearTimeout(zegar);
+        zegar = setTimeout(function () {
+          if (aktywna !== w.id) return;
+          var suma = sumaOkresu(a, i0, i1), vmax = ladnaSkala(suma);
+          A.pokazObraz(obrazOkresu(a, suma, vmax, w), +div.querySelector('.rolnik-przezr input').value);
+          var pal = PALETY[w.paleta] || PALETY.szara;
+          legDol.innerHTML = '<div class="rolnik-leg-tytul">Precipitation total [mm]</div>' +
+            '<div class="rolnik-pasek" style="background:linear-gradient(to right,' + pal.join(',') + ')"></div>' +
+            '<div class="rolnik-skala"><span>0</span><span>' + format(vmax / 2, vmax < 10 ? 1 : 0) + '</span><span>' +
+            format(vmax, 0) + '+</span></div>' +
+            '<div class="rolnik-data">ERA5 (Copernicus) via Open-Meteo, daily data ' + a.dni[0] + ' – ' + a.dni[n - 1] + '</div>';
+        }, natychmiast ? 0 : 150);
+      }
+
+      od.oninput = function () { i0 = +od.value; if (i0 > i1) i1 = i0; rysuj(); };
+      doo.oninput = function () { i1 = +doo.value; if (i1 < i0) i0 = i1; rysuj(); };
+      leg.querySelectorAll('.rolnik-czas-przyciski button').forEach(function (b) {
+        b.onclick = function () {
+          var k = +b.getAttribute('data-dni');
+          if (k >= n) { i0 = 0; i1 = n - 1; } else { i0 = Math.max(0, i1 - k + 1); }
+          rysuj();
+        };
+      });
+
+      // zaznaczanie przedziału przeciągnięciem po wykresie
+      var kotwica = null;
+      function dzienZ(e) {
+        var b = wyk.getBoundingClientRect();
+        return Math.min(n - 1, Math.max(0, Math.floor((e.clientX - b.left) / b.width * n)));
+      }
+      wyk.addEventListener('pointerdown', function (e) {
+        kotwica = dzienZ(e); i0 = i1 = kotwica;
+        try { wyk.setPointerCapture(e.pointerId); } catch (x) { /* brak */ }
+        rysuj(); e.preventDefault();
+      });
+      wyk.addEventListener('pointermove', function (e) {
+        if (kotwica === null) return;
+        var d = dzienZ(e); i0 = Math.min(kotwica, d); i1 = Math.max(kotwica, d); rysuj();
+      });
+      wyk.addEventListener('pointerup', function () { kotwica = null; });
+      wyk.addEventListener('pointercancel', function () { kotwica = null; });
+
+      rysuj(true);
+    }).catch(function (e) {
+      if (aktywna !== w.id) return;
+      pokazStala(A, w, div, +div.querySelector('.rolnik-przezr input').value,
+        'Daily data unavailable (' + e.message + ') – showing the last 7 days.');
+    });
   }
 
   function legenda(w) {

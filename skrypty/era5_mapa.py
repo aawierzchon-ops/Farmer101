@@ -5,12 +5,19 @@ gleby 0-7 cm (średnia z ostatnich 3 dostępnych dni) oraz suma opadów z ostatn
 (opady z ERA5, bo Open-Meteo nie podaje opadów ERA5-Land).
 ERA5-Land pojawia się z ok. 5-dniowym opóźnieniem.
 
+Dodatkowo archiwum dziennych opadów (ERA5) do suwaka czasu w panelu mapy: plik
+opady_dzienne.json. Przy każdym uruchomieniu dopisywane są dni z bieżącego okna; gdy archiwum
+jest krótsze niż DNI_ARCHIWUM_START, brakujące starsze dni pobierane są jednorazowo.
+Archiwum trzymane jest w pliku podanym w --archiwum (na GitHub Actions w pamięci podręcznej),
+maksymalnie DNI_ARCHIWUM_MAX dni wstecz.
+
 Limit darmowego Open-Meteo: 600 wywołań/min, 5000/h, 10 000/dzień - skrypt robi ok. 1100
 wywołań i czeka między paczkami, więc mieści się z zapasem przy uruchamianiu raz dziennie.
 
-Przykład:  python skrypty/era5_mapa.py --wyjscie _dane
+Przykład:  python skrypty/era5_mapa.py --wyjscie _dane --archiwum _cache_opady/opady_dzienne.json
 """
 import argparse
+import base64
 import json
 import os
 import sys
@@ -36,6 +43,9 @@ PACZKA = 100
 PRZERWA_S = 15
 OPOZNIENIE_DNI = 5
 DNI = 7
+DNI_ARCHIWUM_START = 31    # tyle dni wstecz pobieramy, gdy archiwum jest puste/krótkie
+DNI_ARCHIWUM_MAX = 366     # dłuższej historii nie trzymamy
+BRAK = 65535               # brak danych w zapisie uint16 (dziesiąte części mm)
 
 
 def pobierz_json(url, parametry, proby=4):
@@ -70,9 +80,55 @@ def srednia_ostatnich_dni(godziny, wartosci, n=3):
     return sum(v for _, v in ostatnie) / len(ostatnie), ostatnie[-1][0]
 
 
+def wczytaj_archiwum(sciezka, nx, ny, lon0, lat0):
+    """{dzień: lista wartości [mm] lub None} z pliku archiwum (jeśli pasuje do siatki)."""
+    if not sciezka or not os.path.exists(sciezka):
+        return {}
+    try:
+        with open(sciezka, encoding="utf-8") as f:
+            a = json.load(f)
+        if (a["nx"], a["ny"]) != (nx, ny) or abs(a["lon0"] - lon0) > 1e-6 or abs(a["lat0"] - lat0) > 1e-6:
+            print("  archiwum opadów ma inną siatkę - zaczynamy od nowa")
+            return {}
+        v = np.frombuffer(base64.b64decode(a["dane"]), dtype="<u2").reshape(len(a["dni"]), nx * ny)
+        return {d: [None if x == BRAK else x / 10 for x in v[i].tolist()] for i, d in enumerate(a["dni"])}
+    except Exception as e:  # uszkodzony plik - pobierzemy od nowa
+        print(f"  nie udało się wczytać archiwum opadów ({e}) - zaczynamy od nowa")
+        return {}
+
+
+def zapisz_archiwum(sciezki, dni, nx, ny, lon0, lat0):
+    kolejne = sorted(dni)[-DNI_ARCHIWUM_MAX:]
+    v = np.full((len(kolejne), nx * ny), BRAK, dtype="<u2")
+    for i, d in enumerate(kolejne):
+        wiersz = np.array([np.nan if x is None else x for x in dni[d]], dtype="float64")
+        ok = np.isfinite(wiersz)
+        v[i, ok] = np.clip(np.round(wiersz[ok] * 10), 0, BRAK - 1)
+    tresc = {"zrodlo": "ERA5 (Copernicus) przez Open-Meteo", "jednostka": "mm", "skala": 0.1, "brak": BRAK,
+             "nx": nx, "ny": ny, "lon0": lon0, "lat0": lat0, "krok": KROK, "dni": kolejne,
+             "dane": base64.b64encode(v.tobytes()).decode("ascii")}
+    for s in sciezki:
+        if s:
+            os.makedirs(os.path.dirname(os.path.abspath(s)), exist_ok=True)
+            with open(s, "w", encoding="utf-8") as f:
+                json.dump(tresc, f, separators=(",", ":"))
+    print(f"  archiwum opadów: {len(kolejne)} dni ({kolejne[0]} – {kolejne[-1]})" if kolejne else "  archiwum opadów puste")
+    return kolejne
+
+
+def dopisz_dni(dni, j, r, n_punktow, klucz="precipitation_sum_era5"):
+    d = r.get("daily", {})
+    for dzien, v in zip(d.get("time", []), d.get(klucz) or d.get("precipitation_sum") or []):
+        if dzien not in dni:
+            dni[dzien] = [None] * n_punktow
+        dni[dzien][j] = v
+
+
 def main():
     p = argparse.ArgumentParser(description="Mapa ERA5-Land dla Polski.")
     p.add_argument("--wyjscie", required=True)
+    p.add_argument("--archiwum", default=None,
+                   help="plik archiwum dziennych opadów przechowywany między uruchomieniami")
     a = p.parse_args()
     s = S.siatka()
 
@@ -84,6 +140,9 @@ def main():
     koniec = dzis - timedelta(days=OPOZNIENIE_DNI)
     start = koniec - timedelta(days=DNI - 1)
     print(f"ERA5-Land: {len(punkty)} punktów siatki {KROK}°, dni {start} – {koniec}")
+    nx, ny = len(lons), len(lats)
+    lon_a, lat_a = round(float(lons[0]), 6), round(float(lats[0]), 6)
+    dni_opadow = wczytaj_archiwum(a.archiwum, nx, ny, lon_a, lat_a)
 
     t = np.full(len(punkty), np.nan)
     w = np.full(len(punkty), np.nan)
@@ -109,11 +168,37 @@ def main():
             t[i + j] = np.nan if tv is None else tv
             w[i + j] = np.nan if wv is None else wv
             o[i + j] = sum(op) if op else np.nan
+            dopisz_dni(dni_opadow, i + j, r, len(punkty))
             if d:
                 daty.append(d)
         print(f"  {min(i + PACZKA, len(punkty))}/{len(punkty)}")
         if i + PACZKA < len(punkty):
             time.sleep(PRZERWA_S)
+
+    # jednorazowe uzupełnienie starszych dni archiwum opadów
+    od = koniec - timedelta(days=DNI_ARCHIWUM_START - 1)
+    brakujace = [od + timedelta(days=k) for k in range((start - od).days)
+                 if (od + timedelta(days=k)).isoformat() not in dni_opadow]
+    if brakujace:
+        b0, b1 = min(brakujace), max(brakujace)
+        print(f"Archiwum opadów: pobieranie dni {b0} – {b1}")
+        for i in range(0, len(punkty), PACZKA):
+            time.sleep(PRZERWA_S)
+            paczka = punkty[i:i + PACZKA]
+            wyniki = pobierz_json(ARCHIWUM_URL, {
+                "latitude": ",".join(f"{la:.3f}" for la, _ in paczka),
+                "longitude": ",".join(f"{lo:.3f}" for _, lo in paczka),
+                "start_date": b0.isoformat(), "end_date": b1.isoformat(),
+                "daily": "precipitation_sum", "models": "era5",
+                "timezone": ",".join([STREFA] * len(paczka)),
+            })
+            for j, r in enumerate(wyniki):
+                dopisz_dni(dni_opadow, i + j, r, len(punkty), klucz="precipitation_sum")
+            print(f"  {min(i + PACZKA, len(punkty))}/{len(punkty)}")
+    # dni bez żadnej wartości (np. jeszcze niedostępne) pomijamy
+    dni_opadow = {d: v for d, v in dni_opadow.items() if any(x is not None for x in v)}
+    plik_archiwum = os.path.join(a.wyjscie, "opady_dzienne.json")
+    dni_arch = zapisz_archiwum([plik_archiwum, a.archiwum], dni_opadow, nx, ny, lon_a, lat_a)
 
     tr_src = from_origin(lons[0] - KROK / 2, lats[0] + KROK / 2, KROK, KROK)
     ksztalt = (len(lats), len(lons))
@@ -135,10 +220,13 @@ def main():
         S.zapisz_warstwe(W, "wilg_gleby_era5", na_siatke(w), nazwa="Wilgotność gleby 0–7 cm (ERA5-Land)",
                          jednostka="m³/m³", vmin=0.05, vmax=0.50, paleta="wilgotnosc", grupa="ERA5-Land",
                          data=opis, miejsca=2, opis="Objętościowa zawartość wody w wierzchniej warstwie gleby."),
-        S.zapisz_warstwe(W, "opady_7d_era5", na_siatke(o), nazwa="Opady – suma 7 dni (ERA5)",
+        S.zapisz_warstwe(W, "opady_7d_era5", na_siatke(o), nazwa="Opady – suma za wybrany okres (ERA5)",
                          jednostka="mm", vmin=0, vmax=60, paleta="opady", grupa="ERA5-Land",
                          data=f"ERA5, {start} – {koniec}", miejsca=1),
     ]
+    if dni_arch:   # suwak czasu dla warstwy opadów w panelu mapy
+        warstwy[2]["czas"] = {"plik": "opady_dzienne.json", "od": dni_arch[0], "do": dni_arch[-1],
+                              "domyslnie_dni": DNI}
     S.zapisz_meta(W, "era5", warstwy, opis=opis, ostatni_dzien=ostatni)
 
 
