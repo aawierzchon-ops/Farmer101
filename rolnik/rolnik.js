@@ -238,7 +238,7 @@
     div.className = 'rolnik-panel';
     var html = '<div class="rolnik-naglowek"><span>Detailed data</span>' +
       '<button type="button" class="rolnik-zwin" title="Collapse / expand">+</button></div>' +
-      '<div class="rolnik-tresc"><label class="rolnik-opcja"><input type="radio" name="rolnik-w" value="" checked> brak warstwy</label>';
+      '<div class="rolnik-tresc">';
     var grupy = {};
     meta.warstwy.forEach(function (w) {
       if (!w.ukryta) (grupy[w.grupa] = grupy[w.grupa] || []).push(w);
@@ -262,8 +262,16 @@
     div.classList.add('zwiniety');   // na starcie zwinięty, jak pozostałe panele
     zwin.onclick = function () { zwin.textContent = div.classList.toggle('zwiniety') ? '+' : '–'; };
     var suwak = div.querySelector('.rolnik-przezr input');
+    // kliknięcie wybranej już warstwy odznacza ją (mapa bez warstwy analitycznej)
     div.querySelectorAll('input[name=rolnik-w]').forEach(function (r) {
-      r.onchange = function () { pokazWarstwe(A, r.value, div, +suwak.value); };
+      r.onclick = function () {
+        if (aktywna === r.value) {
+          r.checked = false;
+          pokazWarstwe(A, '', div, +suwak.value);
+        } else {
+          pokazWarstwe(A, r.value, div, +suwak.value);
+        }
+      };
     });
     suwak.oninput = function () { A.ustawPrzezroczystosc(+suwak.value); };
     A.dodajPanel(div);
