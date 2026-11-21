@@ -12,7 +12,9 @@ var map = new ol.Map({
 });
 
 //initial view - epsg:3857 coordinates if not "Match project CRS"
-map.getView().fit([-172588694.905665, -90873231.195228, 172588694.905665, 90873231.195227], map.getSize());
+// widok startowy: Polska, środek w Warszawie (na wąskim ekranie telefonu jeden poziom dalej)
+map.getView().setCenter(ol.proj.fromLonLat([21.01, 52.23], map.getView().getProjection()));
+map.getView().setZoom(window.innerWidth < 600 ? 5.6 : 6.6);
 
 //change cursor
 function pointerOnFeature(evt) {
