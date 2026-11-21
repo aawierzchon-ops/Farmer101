@@ -88,7 +88,9 @@
         <style>
         /* Panel "Warstwy" (resources/panel-warstw.js) - wyglad jak panel "Szczegolowe dane" */
         .panele-lewy-dol { position: absolute; left: 8px; bottom: 34px; z-index: 5; display: flex; flex-direction: column;
-          align-items: flex-start; gap: 8px; max-height: calc(100% - 110px); pointer-events: none; }
+          align-items: flex-start; gap: 8px; pointer-events: none;
+          /* panele kończą się pod przyciskami w lewym górnym rogu (zoom, lokalizacja, pomiar, szukaj – do ok. 160 px) */
+          max-height: calc(100% - 210px); }
         .panele-lewy-dol > * { pointer-events: auto; }
         .panele-lewy-dol .rolnik-panel.rolnik-panel { position: static; display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; }
         .panele-lewy-dol .rolnik-panel .rolnik-naglowek { flex: none; }
