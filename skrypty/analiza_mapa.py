@@ -21,8 +21,8 @@ UPRAWY = {
 KLASY_ZAGROZENIA = [
     ("I – low", 0, 4),
     ("II – moderate", 5, 13),
-    ("III – high", 14, 22),
-    ("IV – very high", 23, 27),
+    ("III – high", 14, 20),
+    ("IV – very high", 21, 24),
 ]
 
 # GRUPY GLEB (nazwy jak w legendzie warstwy "Soil type" z gleba_mapa.py):
@@ -33,7 +33,7 @@ GLEBY_SREDNIE_I_CIEZKIE = ["Silt loam", "Clay loam", "Clay", "Silty clay", "Heav
 
 # KRYTERIA:
 # punkty      - punkty za klasy I, II, III, IV
-# wymagane    - False: przy braku danych wynik liczony z pozostałych kryteriów i przeskalowany do 27 pkt
+# wymagane    - False: przy braku danych wynik liczony z pozostałych kryteriów i przeskalowany do 24 pkt
 # przedzialy  - (od, do, klasa): "od" włącznie, "do" wyłącznie, None = bez granicy; "*" = wszystkie uprawy
 # grupy       - typy gleb w klasach I, II, III, IV
 KRYTERIA = [
@@ -50,10 +50,6 @@ KRYTERIA = [
          "kukurydza": [PIASKI, PIASKI_GLINIASTE, GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY],
      }},
 
-    {"id": "porowatosc", "nazwa": "Total porosity", "warstwa": "porowatosc", "jednostka": "%",
-     "punkty": [0, 1, 2, 3], "wymagane": True,
-     "przedzialy": {"*": [(None, 40, 1), (40, 45, 2), (45, 50, 3), (50, None, 4)]}},
-
     {"id": "temperatura", "nazwa": "Soil temperature", "warstwa": "t_gleby_era5", "jednostka": "°C",
      "punkty": [0, 2, 4, 6], "wymagane": True,
      "przedzialy": {
@@ -67,19 +63,20 @@ KRYTERIA = [
     {"id": "woda", "nazwa": "Soil water", "warstwa": "woda_w_porach", "jednostka": "%",
      "punkty": [0, 2, 4, 6], "wymagane": True,
      "przedzialy": {
-         "pszenica_jara": [(None, 30, 1), (30, 55, 2), (55, 75, 3), (75, None, 4)],
-         "pszenica_ozima": [(None, 25, 1), (25, 45, 2), (45, 70, 3), (70, None, 4)],
-         "ziemniak": [(None, 35, 1), (35, 65, 2), (65, 80, 3), (80, None, 4)],
-         "kukurydza": [(None, 30, 1), (30, 50, 2), (50, 75, 3), (75, None, 4)],
+         # dużo wody w porach = małe zagrożenie (klasa I), mało wody = klasa IV
+         "pszenica_jara": [(75, None, 1), (55, 75, 2), (30, 55, 3), (None, 30, 4)],
+         "pszenica_ozima": [(70, None, 1), (45, 70, 2), (25, 45, 3), (None, 25, 4)],
+         "ziemniak": [(80, None, 1), (65, 80, 2), (35, 65, 3), (None, 35, 4)],
+         "kukurydza": [(75, None, 1), (50, 75, 2), (30, 50, 3), (None, 30, 4)],
      }},
 ]
 MAKS_PUNKTOW = sum(max(k["punkty"]) for k in KRYTERIA)
 
 GRUPA = "Final analysis"
-OPIS = ("Multi-criteria hazard assessment from five criteria: NDDI, soil type, total porosity, soil temperature "
-        "and soil water. Each criterion gives points for hazard classes I–IV; the sum (0–27 points) gives the "
-        "final class. Where NDDI is missing (bare soil, clouds), the score from the other four criteria is "
-        "scaled to 27 points.")
+OPIS = ("Multi-criteria hazard assessment from four criteria: NDDI, soil type, soil temperature and soil water. "
+        "Each criterion gives 0, 2, 4 or 6 points for hazard classes I–IV; the sum (0–24 points) gives the final "
+        "class: I low 0–4, II moderate 5–13, III high 14–20, IV very high 21–24. Where NDDI is missing (bare soil, "
+        "clouds), the score from the other three criteria is scaled to 24 points.")
 
 # ODCZYT WARSTW Z PNG:
 def wczytaj_opisy(katalog):

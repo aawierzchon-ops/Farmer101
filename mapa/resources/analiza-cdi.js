@@ -796,8 +796,8 @@
         }).join('') + '</table>';
     }
     h += '<div class="cdi-uwaga">Values of each parameter: see <b>Detailed data</b>.<br>' +
-      'Hazard = sum of points for NDDI, soil type, porosity, soil temperature and soil water (classes from the ' +
-      'multi-criteria analysis); CDI = SPI, SMA, KBW and NDDI anomaly (EDO scheme).</div>';
+      'Hazard = sum of points (0, 2, 4 or 6) for NDDI, soil type, soil temperature and soil water; classes ' +
+      'I 0–4, II 5–13, III 14–20, IV 21–24 (skrypty/analiza_mapa.py). CDI = SPI, SMA, KBW and NDDI anomaly (EDO scheme).</div>';
     wynik.innerHTML = h;
   }
 
@@ -835,7 +835,7 @@
       ['Type', function (d) { return esc(d.gleba || '–'); }],
       ['Cat.', function (d) { return d.kategoria; }]
     ].concat(kolPunkty('gleba_klasa')), dane);
-    h += sekcja('Total porosity', 'SoilGrids', [
+    h += sekcja('Total porosity', 'SoilGrids; used for soil water (pore filling)', [
       ['%', function (d) { return f1(d.wynik.porowatosc); }, sr(function (d) { return d.wynik.porowatosc; }, f1)]
     ].concat(kolPunkty('porowatosc')), dane);
 
@@ -897,7 +897,7 @@
           sr(function (d) { return d.wynik.piksele ? d.wynik.piksele.srednia : NaN; }, function (v) { return ocena(f1(v), v / am.maks_punktow); })],
         ['I', procKlasy(0)], ['II', procKlasy(1)], ['III', procKlasy(2)], ['IV', procKlasy(3)]
       ], dane);
-      h += '<div class="cdi-uwaga">Map colours per 10 m pixel: NDDI of the pixel + parcel-average soil type, porosity, soil ' +
+      h += '<div class="cdi-uwaga">Map colours per 10 m pixel: NDDI of the pixel + parcel-average soil type, soil ' +
         'temperature and soil water (these come from coarser data). Columns I–IV: share of pixels in each hazard class.</div>';
     } else {
       h += '<div class="cdi-uwaga">Within-parcel map unavailable: no cloud-free Sentinel-2 image in the last ' + NDDI_DNI + ' days.</div>';
