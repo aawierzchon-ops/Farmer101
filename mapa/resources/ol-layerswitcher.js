@@ -7,7 +7,61 @@
 Control = 'default' in Control ? Control['default'] : Control;
 LayerGroup = 'default' in LayerGroup ? LayerGroup['default'] : LayerGroup;
 
-
+/**
+ * @protected
+ */
+const CSS_PREFIX = 'layer-switcher-';
+/**
+ * OpenLayers LayerSwitcher Control, displays a list of layers and groups
+ * associated with a map which have a `title` property.
+ *
+ * To be shown in the LayerSwitcher panel layers must have a `title` property;
+ * base map layers should have a `type` property set to `base`. Group layers
+ * (`LayerGroup`) can be used to visually group layers together; a group
+ * with a `fold` property set to either `'open'` or `'close'` will be displayed
+ * with a toggle.
+ *
+ * See [BaseLayerOptions](#baselayeroptions) for a full list of LayerSwitcher
+ * properties for layers (`TileLayer`, `ImageLayer`, `VectorTile` etc.) and
+ * [GroupLayerOptions](#grouplayeroptions) for group layer (`LayerGroup`)
+ * LayerSwitcher properties.
+ *
+ * Layer and group properties can either be set by adding extra properties
+ * to their options when they are created or via their set method.
+ *
+ * Specify a `title` for a Layer by adding a `title` property to it's options object:
+ * ```javascript
+ * var lyr = new ol.layer.Tile({
+ *   // Specify a title property which will be displayed by the layer switcher
+ *   title: 'OpenStreetMap',
+ *   visible: true,
+ *   source: new ol.source.OSM()
+ * })
+ * ```
+ *
+ * Alternatively the properties can be set via the `set` method after a layer has been created:
+ * ```javascript
+ * var lyr = new ol.layer.Tile({
+ *   visible: true,
+ *   source: new ol.source.OSM()
+ * })
+ * // Specify a title property which will be displayed by the layer switcher
+ * lyr.set('title', 'OpenStreetMap');
+ * ```
+ *
+ * To create a LayerSwitcher and add it to a map, create a new instance then pass it to the map's [`addControl` method](https://openlayers.org/en/latest/apidoc/module-ol_Map-Map.html#addControl).
+ * ```javascript
+ * var layerSwitcher = new LayerSwitcher({
+ *   reverse: true,
+ *   groupSelectStyle: 'group'
+ * });
+ * map.addControl(layerSwitcher);
+ * ```
+ *
+ * @constructor
+ * @extends {ol/control/Control~Control}
+ * @param opt_options LayerSwitcher options, see  [LayerSwitcher Options](#options) and [RenderOptions](#renderoptions) which LayerSwitcher `Options` extends for more details.
+ */
 class LayerSwitcher extends Control {
     constructor(opt_options) {
         const options = Object.assign({}, opt_options);
@@ -100,19 +154,49 @@ class LayerSwitcher extends Control {
             }
         }
     }
-
+    /**
+     * Show the layer panel. Fires `'show'` event.
+     * @fires LayerSwitcher#show
+     */
     showPanel() {
         if (!this.element.classList.contains(this.shownClassName)) {
             this.element.classList.add(this.shownClassName);
             this.updateButton();
             this.renderPanel();
-
+        }
+        /**
+         * Event triggered after the panel has been shown.
+         * Listen to the event via the `on` or `once` methods; for example:
+         * ```js
+         * var layerSwitcher = new LayerSwitcher();
+         * map.addControl(layerSwitcher);
+         *
+         * layerSwitcher.on('show', evt => {
+         *   console.log('show', evt);
+         * });
+         * @event LayerSwitcher#show
+         */
+        this.dispatchEvent('show');
+    }
+    /**
+     * Hide the layer panel. Fires `'hide'` event.
+     * @fires LayerSwitcher#hide
+     */
     hidePanel() {
         if (this.element.classList.contains(this.shownClassName)) {
             this.element.classList.remove(this.shownClassName);
             this.updateButton();
         }
-
+        /**
+         * Event triggered after the panel has been hidden.
+         * @event LayerSwitcher#hide
+         */
+        this.dispatchEvent('hide');
+    }
+    /**
+     * Update button text content and attributes based on current
+     * state
+     */
     updateButton() {
         if (this.element.classList.contains(this.shownClassName)) {
             this.button.textContent = this.collapseLabel;
@@ -125,7 +209,9 @@ class LayerSwitcher extends Control {
             this.button.setAttribute('aria-label', this.tipLabel);
         }
     }
-
+    /**
+     * Re-draw the layer panel to represent the current state of the layers.
+     */
     renderPanel() {
         this.dispatchEvent('render');
         LayerSwitcher.renderPanel(this.getMap(), this.panel, {
@@ -134,7 +220,12 @@ class LayerSwitcher extends Control {
         });
         this.dispatchEvent('rendercomplete');
     }
-
+    /**
+     * **_[static]_** - Re-draw the layer panel to represent the current state of the layers.
+     * @param map The OpenLayers Map instance to render layers for
+     * @param panel The DOM Element into which the layer tree will be rendered
+     * @param options Options for panel, group, and layers
+     */
     static renderPanel(map, panel, options) {
         // Create the event.
         const render_event = new Event('render');
@@ -242,7 +333,12 @@ class LayerSwitcher extends Control {
             });
         });
     }
-
+    /**
+     * Ensure only the top-most base layer is visible if more than one is visible.
+     * @param map The map instance.
+     * @param groupSelectStyle
+     * @protected
+     */
     static ensureTopVisibleBaseLayerShown(map, groupSelectStyle) {
         let lastVisibleBaseLyr;
         LayerSwitcher.forEachRecursive(map, function (lyr, _idx, _arr) {
@@ -253,7 +349,12 @@ class LayerSwitcher extends Control {
         if (lastVisibleBaseLyr)
             LayerSwitcher.setVisible_(map, lastVisibleBaseLyr, true, groupSelectStyle);
     }
-
+    /**
+     * **_[static]_** - Get an Array of all layers and groups displayed by the LayerSwitcher (has a `'title'` property)
+     * contained by the specified map or layer group; optionally filtering via `filterFn`
+     * @param grp The map or layer group for which layers are found.
+     * @param filterFn Optional function used to filter the returned layers
+     */
     static getGroupsAndLayers(grp, filterFn) {
         const layers = [];
         filterFn =
@@ -270,7 +371,17 @@ class LayerSwitcher extends Control {
         });
         return layers;
     }
-
+    /**
+     * Toggle the visible state of a layer.
+     * Takes care of hiding other layers in the same exclusive group if the layer
+     * is toggle to visible.
+     * @protected
+     * @param map The map instance.
+     * @param lyr layer whose visibility will be toggled.
+     * @param visible Set whether the layer is shown
+     * @param groupSelectStyle
+     * @protected
+     */
     static setVisible_(map, lyr, visible, groupSelectStyle) {
         // console.log(lyr.get('title'), visible, groupSelectStyle);
         lyr.setVisible(visible);
@@ -290,7 +401,14 @@ class LayerSwitcher extends Control {
             });
         }
     }
-
+    /**
+     * Render all layers that are children of a group.
+     * @param map The map instance.
+     * @param lyr Layer to be rendered (should have a title property).
+     * @param idx Position in parent group list.
+     * @param options Options for groups and layers
+     * @protected
+     */
     static renderLayer_(map, lyr, idx, options, render) {
         const li = document.createElement('li');
         const lyrTitle = lyr.get('title');
@@ -368,7 +486,14 @@ class LayerSwitcher extends Control {
         }
         return li;
     }
-
+    /**
+     * Render all layers that are children of a group.
+     * @param map The map instance.
+     * @param lyr Group layer whose children will be rendered.
+     * @param elm DOM element that children will be appended to.
+     * @param options Options for groups and layers
+     * @protected
+     */
     static renderLayers_(map, lyr, elm, options, render) {
         let lyrs = lyr.getLayers().getArray().slice();
         if (options.reverse)
@@ -380,7 +505,13 @@ class LayerSwitcher extends Control {
             }
         }
     }
-
+    /**
+     * **_[static]_** - Call the supplied function for each layer in the passed layer group
+     * recursing nested groups.
+     * @param lyr The layer group to start iterating from.
+     * @param fn Callback which will be called for each layer
+     * found under `lyr`.
+     */
     static forEachRecursive(lyr, fn) {
         lyr.getLayers().forEach(function (lyr, idx, a) {
             fn(lyr, idx, a);
@@ -389,14 +520,23 @@ class LayerSwitcher extends Control {
             }
         });
     }
-
+    /**
+     * **_[static]_** - Generate a UUID
+     * Adapted from http://stackoverflow.com/a/2117523/526860
+     * @returns {String} UUID
+     */
     static uuid() {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             const r = (Math.random() * 16) | 0, v = c == 'x' ? r : (r & 0x3) | 0x8;
             return v.toString(16);
         });
     }
-
+    /**
+     * Apply workaround to enable scrolling of overflowing content within an
+     * element. Adapted from https://gist.github.com/chrismbarr/4107472
+     * @param elm Element on which to enable touch scrolling
+     * @protected
+     */
     static enableTouchScroll_(elm) {
         if (LayerSwitcher.isTouchDevice_()) {
             let scrollStartPos = 0;
@@ -408,7 +548,12 @@ class LayerSwitcher extends Control {
             }, false);
         }
     }
-
+    /**
+     * Determine if the current browser supports touch events. Adapted from
+     * https://gist.github.com/chrismbarr/4107472
+     * @returns {Boolean} True if client can have 'TouchEvent' event
+     * @protected
+     */
     static isTouchDevice_() {
         try {
             document.createEvent('TouchEvent');
@@ -418,20 +563,31 @@ class LayerSwitcher extends Control {
             return false;
         }
     }
-
+    /**
+     * Fold/unfold layer group
+     * @param lyr Layer group to fold/unfold
+     * @param li List item containing layer group
+     * @protected
+     */
     static toggleFold_(lyr, li) {
         li.classList.remove(CSS_PREFIX + lyr.get('fold'));
         lyr.set('fold', lyr.get('fold') === 'open' ? 'close' : 'open');
         li.classList.add(CSS_PREFIX + lyr.get('fold'));
     }
-
+    /**
+     * If a valid groupSelectStyle value is not provided then return the default
+     * @param groupSelectStyle The string to check for validity
+     * @returns The value groupSelectStyle, if valid, the default otherwise
+     * @protected
+     */
     static getGroupSelectStyle(groupSelectStyle) {
         return ['none', 'children', 'group'].indexOf(groupSelectStyle) >= 0
             ? groupSelectStyle
             : 'children';
     }
 }
-
+// Expose LayerSwitcher as ol.control.LayerSwitcher if using a full build of
+// OpenLayers
 if (window['ol'] && window['ol']['control']) {
     window['ol']['control']['LayerSwitcher'] = LayerSwitcher;
 }
