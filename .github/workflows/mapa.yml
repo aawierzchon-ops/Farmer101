@@ -2,8 +2,8 @@ name: Map
 
 on:
   schedule:
-    - cron: "37 3 * * *"        # codziennie ok. 4:37 czasu polskiego
-  workflow_dispatch:             # przycisk "Run workflow"
+    - cron: "37 3 * * *"
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ["mapa/**", "rolnik/**", "skrypty/**", ".github/workflows/**"]
@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -32,10 +32,9 @@ jobs:
       - name: Instalacja bibliotek
         run: pip install -r requirements.txt
 
-      # Gleba się nie zmienia - liczona raz, potem brana z pamięci podręcznej
       - name: Gleba - pamięć podręczna
         id: gleba
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: _cache_gleba
           key: gleba-soilgrids-${{ hashFiles('skrypty/gleba_mapa.py', 'skrypty/siatka.py') }}
@@ -44,7 +43,7 @@ jobs:
         if: steps.gleba.outputs.cache-hit != 'true'
         run: python skrypty/gleba_mapa.py --wyjscie _cache_gleba
 
-      - name: Landsat 8/9 - NDVI, NDWI, NDDI, temperatura powierzchni
+      - name: Landsat 8/9 - NDVI, GNDVI, OSAVI, NDWI, NDDI, NNI, temperatura powierzchni
         run: python skrypty/landsat_mapa.py --wyjscie _dane --chmury 10 --dni 90
 
       - name: ERA5-Land - temperatura i wilgotność gleby, opady
