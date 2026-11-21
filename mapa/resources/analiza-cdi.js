@@ -136,10 +136,11 @@
   // po obliczeniu działka ma kolor wg wyniku końcowego: zielony = dobrze … czerwony = źle
   function stylDzialki(f) {
     var d = f.get('dzialka'), t = ocenaDzialki(d), jest = isFinite(t);
-    var kolor = jest ? kolorSkali(t) : '#1565c0';
+    var kolor = jest ? kolorSkali(t) : '#1565c0', mozaika = !!(d && d.warstwaPikseli);
     return new ol.style.Style({
-      stroke: new ol.style.Stroke({ color: kolor, width: 3 }),
-      fill: new ol.style.Fill({ color: jest ? kolorSkali(t, 0.55) : 'rgba(21,101,192,0.2)' }),
+      stroke: new ol.style.Stroke({ color: mozaika ? 'rgba(0,0,0,0.75)' : kolor, width: mozaika ? 2 : 3 }),
+      // z mozaiką pikseli wypełnienie jest przezroczyste – kolory pokazują piksele 10 m
+      fill: new ol.style.Fill({ color: mozaika ? 'rgba(0,0,0,0)' : jest ? kolorSkali(t, 0.55) : 'rgba(21,101,192,0.2)' }),
       text: new ol.style.Text({
         text: d ? d.numer + (jest ? '\n' + d.wynik.punkty.wynik + ' pts' : '') : '',
         font: 'bold 14px Arial, sans-serif', overflow: true,
@@ -149,6 +150,12 @@
   }
   var zrodlo = new ol.source.Vector();
   map.addLayer(new ol.layer.Vector({ source: zrodlo, zIndex: 999, style: stylDzialki }));
+  // mozaiki pikseli 10 m (po jednej warstwie obrazu na działkę), pod obrysami działek
+  var grupaPikseli = new ol.layer.Group({ zIndex: 998 });
+  map.addLayer(grupaPikseli);
+  function usunMozaike(d) {
+    if (d.warstwaPikseli) { grupaPikseli.getLayers().remove(d.warstwaPikseli); d.warstwaPikseli = null; }
+  }
 
   // ------------------------------------------------------------------ panele
   var tresc = document.querySelector('.panel-analiza-koncowa');
@@ -205,7 +212,8 @@
     return (+a[1]) + ' ' + RZYM[+a[0]] + '–' + (+b[1]) + ' ' + RZYM[+b[0]];
   }
   function wyczyscWyniki() {
-    stan.dzialki.forEach(function (d) { d.wynik = null; d.feature.changed(); });
+    grupaPikseli.getLayers().clear();
+    stan.dzialki.forEach(function (d) { d.wynik = null; d.warstwaPikseli = null; d.feature.changed(); });
     wynik.innerHTML = '';
     szczegoly.innerHTML = PUSTE_SZCZEGOLY;
     odswiezListe();
@@ -233,6 +241,7 @@
   function usun(d) {
     stan.dzialki = stan.dzialki.filter(function (x) { return x !== d; });
     zrodlo.removeFeature(d.feature);
+    usunMozaike(d);
     wyczyscWyniki();
   }
 
@@ -435,7 +444,9 @@
       .then(function (w) {
         var ok = w.filter(function (s) { return s && s.czyste >= NDDI_CZYSTE && isFinite(s.nddi); });
         var pole = function (k) { return srednia(ok.map(function (s) { return s[k]; })); };
-        return { nddi: pole('nddi'), ndvi: pole('ndvi'), ndwi: pole('ndwi'), sceny: ok.length };
+        // bezchmurne sceny od najnowszej – do mozaiki pikseli
+        var lista = ok.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; });
+        return { nddi: pole('nddi'), ndvi: pole('ndvi'), ndwi: pole('ndwi'), sceny: ok.length, listaScen: lista };
       });
     d.nddiCache[klucz].catch(function () { delete d.nddiCache[klucz]; });
     return d.nddiCache[klucz];
@@ -451,7 +462,7 @@
         if (!st) return null;
         var v = WYRAZENIA.map(function (x) { return st[x]; });
         if (!v[0] || !v[0].count) return null;
-        return { ndvi: v[0].mean, ndwi: v[1].mean, nddi: v[2].median, czyste: v[3] ? v[3].mean : 0 };
+        return { id: scena.id, data: scena.data, ndvi: v[0].mean, ndwi: v[1].mean, nddi: v[2].median, czyste: v[3] ? v[3].mean : 0 };
       })
       .catch(function () { return null; });
   }
@@ -472,7 +483,8 @@
     var mies = +data.slice(5, 7), rok = +data.slice(0, 4), od = przesun(data, -NDDI_DNI), lata = [];
     for (var r = NDDI_OD_ROKU; r < rok; r++) lata.push(r);
     return nddiOkna(d, od, data).then(function (teraz) {
-      var w = { nddi: teraz.nddi, ndvi: teraz.ndvi, ndwi: teraz.ndwi, sceny: teraz.sceny, od: od, z: NaN, lat: 0, powod: '' };
+      var w = { nddi: teraz.nddi, ndvi: teraz.ndvi, ndwi: teraz.ndwi, sceny: teraz.sceny, listaScen: teraz.listaScen,
+        od: od, z: NaN, lat: 0, powod: '' };
       if (mies < 4 || mies > 9) { w.powod = 'outside growing season (IV–IX)'; return w; }
       if (!teraz.sceny) { w.powod = 'no cloud-free image'; return w; }
       if (!(teraz.ndvi >= NDVI_MIN)) { w.powod = 'NDVI < ' + NDVI_MIN + ' (bare soil)'; return w; }
@@ -534,6 +546,144 @@
     return alert ? 3 : warning ? 2 : watch ? 1 : 0;
   }
 
+  // ------------------------------------------------------------------ mozaika pikseli 10 m (Sentinel-2)
+  // Dla każdej działki: siatka ok. 10 × 10 m w EPSG:4326 na prostokącie działki, piksele wewnątrz obrysu.
+  // NDDI i NDVI z PIKSELE_SCEN najnowszych bezchmurnych scen (mediana na piksel, bez chmur wg SCL).
+  // Punkty piksela = kryteria działki (gleba, porowatość, temperatura, woda – uśrednione) + NDDI piksela.
+  var PIKSEL_M = 10, MAKS_PIKSELI = 200000, PIKSELE_SCEN = 3, PROBKI_GLEBY = 25;
+  var WYR_PIKSELI = [NDVI_X, '(' + NDVI_X + '-' + NDWI_X + ')/(' + NDVI_X + '+' + NDWI_X + ')',
+    'where((SCL>=4)&(SCL<=6),1.0,0.0)'];
+
+  function siatkaDzialki(d) {
+    if (d.siatka) return d.siatka;
+    var geom = new ol.format.GeoJSON().readGeometry(d.geojson.geometry), e = geom.getExtent();
+    var lat = (e[1] + e[3]) / 2;
+    var w = Math.max(1, Math.ceil((e[2] - e[0]) / (PIKSEL_M / (111320 * Math.cos(lat * Math.PI / 180)))));
+    var h = Math.max(1, Math.ceil((e[3] - e[1]) / (PIKSEL_M / 110574)));
+    var k = Math.sqrt(w * h / MAKS_PIKSELI);
+    if (k > 1) { w = Math.ceil(w / k); h = Math.ceil(h / k); }     // bardzo duże działki – rzadsza siatka
+    var maska = new Uint8Array(w * h), n = 0, dx = (e[2] - e[0]) / w, dy = (e[3] - e[1]) / h;
+    for (var r = 0; r < h; r++) {
+      for (var c = 0; c < w; c++) {
+        if (geom.intersectsCoordinate([e[0] + (c + 0.5) * dx, e[3] - (r + 0.5) * dy])) { maska[r * w + c] = 1; n++; }
+      }
+    }
+    d.siatka = { w: w, h: h, bbox: e, dx: dx, dy: dy, maska: maska, n: n, bokM: Math.round(dx * 111320 * Math.cos(lat * Math.PI / 180)) };
+    return d.siatka;
+  }
+
+  // plik .npy (NumPy): nagłówek + dane float64/float32, kształt (pasma, wiersze, kolumny)
+  function czytajNpy(buf) {
+    var b = new Uint8Array(buf), dv = new DataView(buf), wersja = b[6];
+    var dl = wersja >= 2 ? dv.getUint32(8, true) : dv.getUint16(8, true), start = (wersja >= 2 ? 12 : 10);
+    var naglowek = new TextDecoder('latin1').decode(b.subarray(start, start + dl)), off = start + dl;
+    var typ = /'descr':\s*'([^']+)'/.exec(naglowek)[1];
+    var ksztalt = /'shape':\s*\(([^)]*)\)/.exec(naglowek)[1].split(',').filter(function (x) { return x.trim(); }).map(Number);
+    var kopia = buf.slice(off);
+    var dane = typ === '<f8' ? new Float64Array(kopia) : typ === '<f4' ? new Float32Array(kopia) : new Uint8Array(kopia);
+    return { dane: dane, ksztalt: ksztalt };
+  }
+
+  function pikseleSceny(d, scena) {
+    var s = siatkaDzialki(d);
+    var url = PC + '/data/v1/item/bbox/' + s.bbox.join(',') + '/' + s.w + 'x' + s.h + '.npy?collection=sentinel-2-l2a&item=' +
+      encodeURIComponent(scena.id) + '&expression=' + encodeURIComponent(WYR_PIKSELI.join(';')) + '&asset_as_band=true';
+    return fetch(url).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(czytajNpy).catch(function () { return null; });
+  }
+
+  function mediana(a) {
+    if (!a.length) return NaN;
+    a.sort(function (x, y) { return x - y; });
+    var m = a.length >> 1;
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  // NDDI i NDVI dla każdego piksela działki (mediana z kilku najnowszych bezchmurnych scen)
+  function pikseleDzialki(d, rosl) {
+    var sceny = (rosl.listaScen || []).slice(0, PIKSELE_SCEN);
+    if (!sceny.length) return Promise.resolve(null);
+    var s = siatkaDzialki(d), n = s.w * s.h;
+    return Promise.all(sceny.map(function (sc) { return pikseleSceny(d, sc); })).then(function (tab) {
+      tab = tab.filter(function (t) { return t && t.ksztalt[0] >= 4 && t.ksztalt[1] === s.h && t.ksztalt[2] === s.w; });
+      if (!tab.length) return null;
+      var nddi = new Float32Array(n), ndvi = new Float32Array(n);
+      for (var i = 0; i < n; i++) {
+        nddi[i] = ndvi[i] = NaN;
+        if (!s.maska[i]) continue;
+        var a = [], v = [];
+        tab.forEach(function (t) {
+          var D = t.dane;
+          if (D[3 * n + i] > 0 && D[2 * n + i] >= 1 && isFinite(D[n + i]) && isFinite(D[i])) { v.push(D[i]); a.push(D[n + i]); }
+        });
+        if (a.length) { nddi[i] = mediana(a); ndvi[i] = mediana(v); }
+      }
+      return { siatka: s, nddi: nddi, ndvi: ndvi, sceny: tab.length, daty: sceny.slice(0, tab.length).map(function (x) { return x.data; }) };
+    });
+  }
+
+  // gleba uśredniona w obrębie działki: do PROBKI_GLEBY punktów wewnątrz obrysu z warstw SoilGrids;
+  // gatunek gleby – najczęstszy, porowatość – średnia
+  function glebaDzialki(d) {
+    if (!window.rolnikWartosc) return Promise.resolve({ gleba: null, porowatosc: NaN, probki: 0, typy: {} });
+    var s = siatkaDzialki(d), punkty = [], krok = Math.max(1, Math.floor(s.n / PROBKI_GLEBY)), k = 0;
+    for (var i = 0; i < s.w * s.h; i++) {
+      if (!s.maska[i]) continue;
+      if (k++ % krok === 0) punkty.push([s.bbox[0] + ((i % s.w) + 0.5) * s.dx, s.bbox[3] - (Math.floor(i / s.w) + 0.5) * s.dy]);
+    }
+    if (!punkty.length) punkty.push([d.lon, d.lat]);
+    return Promise.all(punkty.map(function (p) {
+      return Promise.all([window.rolnikWartosc('gleba_klasa', p[0], p[1]), window.rolnikWartosc('porowatosc', p[0], p[1])]);
+    })).then(function (w) {
+      var typy = {}, por = [];
+      w.forEach(function (x) {
+        if (x[0] && x[0].tekst) typy[x[0].tekst] = (typy[x[0].tekst] || 0) + 1;
+        if (x[1] && isFinite(x[1].liczba)) por.push(x[1].liczba);
+      });
+      var gleba = Object.keys(typy).sort(function (a, b) { return typy[b] - typy[a]; })[0] || null;
+      return { gleba: gleba, porowatosc: srednia(por), probki: punkty.length, typy: typy };
+    });
+  }
+
+  // punkty zagrożenia każdego piksela i obraz mozaiki na mapie
+  function mozaikaDzialki(d, am, uprawa, wartDzialki) {
+    var px = d.wynik.piksele;
+    if (!px || !am) return;
+    var s = px.siatka, n = s.w * s.h, wynikPx = new Float32Array(n), klasy = [0, 0, 0, 0], ile = 0, suma = 0;
+    var cache = {};
+    for (var i = 0; i < n; i++) {
+      wynikPx[i] = NaN;
+      if (!s.maska[i]) continue;
+      var nd = px.nddi[i], ok = isFinite(nd) && px.ndvi[i] >= 0.2;
+      var klucz = ok ? nd.toFixed(3) : 'brak';
+      if (cache[klucz] === undefined) {
+        var wart = Object.assign({}, wartDzialki, { nddi: ok ? { liczba: nd } : null });
+        cache[klucz] = punktyUprawy(am, uprawa, wart).wynik;
+      }
+      var p = cache[klucz];
+      if (p === null) continue;
+      wynikPx[i] = p; ile++; suma += p;
+      var kl = klasaZagrozenia(am, p);
+      if (kl) klasy[kl - 1]++;
+    }
+    px.wynik = wynikPx; px.ile = ile; px.srednia = ile ? suma / ile : NaN; px.klasy = klasy;
+    if (!ile) return;
+    var c = document.createElement('canvas');
+    c.width = s.w; c.height = s.h;
+    var ctx = c.getContext('2d'), obraz = ctx.createImageData(s.w, s.h), D = obraz.data;
+    for (var j = 0; j < n; j++) {
+      if (!isFinite(wynikPx[j])) continue;
+      var rgb = /\d+,\d+,\d+/.exec(kolorSkali(wynikPx[j] / am.maks_punktow))[0].split(',');
+      D[j * 4] = +rgb[0]; D[j * 4 + 1] = +rgb[1]; D[j * 4 + 2] = +rgb[2]; D[j * 4 + 3] = 215;
+    }
+    ctx.putImageData(obraz, 0, 0);
+    usunMozaike(d);
+    d.warstwaPikseli = new ol.layer.Image({
+      source: new ol.source.ImageStatic({ url: c.toDataURL('image/png'), imageExtent: s.bbox, projection: 'EPSG:4326', interpolate: false })
+    });
+    grupaPikseli.getLayers().push(d.warstwaPikseli);
+  }
+
   // ------------------------------------------------------------------ obliczenia
   function oblicz() {
     var data = poleData.value || dzis, uprawa = poleUprawa.value, uprawaKbw = UPRAWA_KBW[uprawa] || 'Zboża jare';
@@ -547,26 +697,29 @@
     szczegoly.innerHTML = '<div class="panel-pusty">Downloading data…</div>';
     poKolei(dane, function (d) {
       d.wynik = null; d.blad = null;
-      var gleby = window.rolnikWartosc ? Promise.all([window.rolnikWartosc('gleba_klasa', d.lon, d.lat),
-        window.rolnikWartosc('porowatosc', d.lon, d.lat)]) : Promise.resolve([null, null]);
-      return Promise.all([daneKlimatu(d.lon, d.lat), gleby]).then(function (w) {
-        var kl = wskaznikiKlimatu(w[0], data, uprawaKbw, d.kategoria);
-        if (w[1][0] && w[1][0].tekst) d.gleba = w[1][0].tekst;
-        var porowatosc = w[1][1] ? w[1][1].liczba : NaN;
+      usunMozaike(d);
+      return Promise.all([daneKlimatu(d.lon, d.lat), glebaDzialki(d)]).then(function (w) {
+        var kl = wskaznikiKlimatu(w[0], data, uprawaKbw, d.kategoria), gl = w[1];
+        if (gl.gleba) d.gleba = gl.gleba;
+        var porowatosc = gl.porowatosc;
         return roslinnosc(d, kl.data).catch(function (e) { return { z: NaN, powod: e.message }; }).then(function (r) {
-          var woda = isFinite(porowatosc) && kl.wilg7 !== null ? Math.min(100, Math.max(0, 100 * kl.wilg7 / (porowatosc / 100))) : NaN;
-          d.wynik = { kl: kl, rosl: r, porowatosc: porowatosc, woda: woda };
-          d.wynik.cdi = poziomCDI(kl.spi1.wartosc, kl.spi3.wartosc, kl.sma.wartosc, kl.kbw && kl.kbw.susza, r.z);
-          var am = analizaMeta();
-          if (am) {
-            d.wynik.punkty = punktyUprawy(am, uprawa, {
-              nddi: isFinite(r.nddi) && r.ndvi >= 0.2 ? { liczba: r.nddi } : null,
-              gleba_klasa: d.gleba ? { tekst: d.gleba } : null,
-              porowatosc: isFinite(porowatosc) ? { liczba: porowatosc } : null,
-              t_gleby_era5: kl.tGleby !== null ? { liczba: kl.tGleby } : null,
-              woda_w_porach: isFinite(woda) ? { liczba: woda } : null
-            });
-          }
+          return pikseleDzialki(d, r).catch(function () { return null; }).then(function (piksele) {
+            var woda = isFinite(porowatosc) && kl.wilg7 !== null ? Math.min(100, Math.max(0, 100 * kl.wilg7 / (porowatosc / 100))) : NaN;
+            d.wynik = { kl: kl, rosl: r, porowatosc: porowatosc, woda: woda, glebaProbki: gl, piksele: piksele };
+            d.wynik.cdi = poziomCDI(kl.spi1.wartosc, kl.spi3.wartosc, kl.sma.wartosc, kl.kbw && kl.kbw.susza, r.z);
+            var am = analizaMeta();
+            if (am) {
+              var wart = {
+                nddi: isFinite(r.nddi) && r.ndvi >= 0.2 ? { liczba: r.nddi } : null,
+                gleba_klasa: d.gleba ? { tekst: d.gleba } : null,
+                porowatosc: isFinite(porowatosc) ? { liczba: porowatosc } : null,
+                t_gleby_era5: kl.tGleby !== null ? { liczba: kl.tGleby } : null,
+                woda_w_porach: isFinite(woda) ? { liczba: woda } : null
+              };
+              d.wynik.punkty = punktyUprawy(am, uprawa, wart);
+              mozaikaDzialki(d, am, uprawa, wart);
+            }
+          });
         });
       }).catch(function (e) { d.blad = e.message; }).then(function () {
         d.feature.changed();
@@ -728,6 +881,33 @@
         sr(function (d) { return d.wynik.rosl.z; }, f2)],
       ['Years', function (d) { return d.wynik.rosl.lat || 0; }]
     ], dane);
+    // zmienność wewnątrz działki (mozaika pikseli 10 m)
+    var procKlasy = function (k) {
+      return function (d) {
+        var p = d.wynik.piksele;
+        return p && p.ile ? f0(100 * p.klasy[k] / p.ile) + '%' : '–';
+      };
+    };
+    var zPikselami = dane.filter(function (d) { return d.wynik.piksele && d.wynik.piksele.ile; });
+    if (am && zPikselami.length) {
+      var p0 = zPikselami[0].wynik.piksele;
+      h += sekcja('Within-parcel map', 'Sentinel-2 pixels ~' + p0.siatka.bokM + ' m, median of ' + p0.sceny + ' image(s): ' + p0.daty.join(', '), [
+        ['Pixels', function (d) { var p = d.wynik.piksele; return p ? p.ile : '–'; }],
+        ['Mean', function (d) { var p = d.wynik.piksele; return p && p.ile ? ocena(f1(p.srednia), p.srednia / am.maks_punktow) : '–'; },
+          sr(function (d) { return d.wynik.piksele ? d.wynik.piksele.srednia : NaN; }, function (v) { return ocena(f1(v), v / am.maks_punktow); })],
+        ['I', procKlasy(0)], ['II', procKlasy(1)], ['III', procKlasy(2)], ['IV', procKlasy(3)]
+      ], dane);
+      h += '<div class="cdi-uwaga">Map colours per 10 m pixel: NDDI of the pixel + parcel-average soil type, porosity, soil ' +
+        'temperature and soil water (these come from coarser data). Columns I–IV: share of pixels in each hazard class.</div>';
+    } else {
+      h += '<div class="cdi-uwaga">Within-parcel map unavailable: no cloud-free Sentinel-2 image in the last ' + NDDI_DNI + ' days.</div>';
+    }
+    var gp = dane[0].wynik.glebaProbki;
+    if (gp && gp.probki) {
+      h += '<div class="cdi-uwaga">Soil averaged over ' + gp.probki + ' points inside the parcel' +
+        (Object.keys(gp.typy).length > 1 ? ' (types: ' + Object.keys(gp.typy).map(function (t) { return esc(t) + ' ×' + gp.typy[t]; }).join(', ') + ' – most frequent used)' : '') + '.</div>';
+    }
+
     var bez = dane.filter(function (d) { return !isFinite(d.wynik.rosl.z); });
     if (bez.length) h += '<div class="cdi-uwaga">NDDI anomaly not calculated: ' + esc(bez[0].wynik.rosl.powod || 'no data') + '.</div>';
     h += '<div class="cdi-uwaga">Sources: ERA5 / ERA5-Land (Copernicus) via Open-Meteo; Sentinel-2 L2A via Microsoft Planetary ' +
