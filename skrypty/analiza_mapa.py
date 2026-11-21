@@ -43,11 +43,12 @@ KRYTERIA = [
 
     {"id": "gleba", "nazwa": "Soil type", "warstwa": "gleba_klasa", "jednostka": "",
      "punkty": [0, 2, 4, 6], "wymagane": True,
+     # piaski: najwyższe ryzyko suszy (woda szybko ucieka) - klasa IV, 6 pkt; klasa I bez typów gleb
      "grupy": {
-         "pszenica_jara": [PIASKI, PIASKI_GLINIASTE, GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY],
-         "pszenica_ozima": [PIASKI, PIASKI_GLINIASTE, GLINY_LEKKIE_I_PYLY, GLEBY_SREDNIE_I_CIEZKIE],
-         "ziemniak": [PIASKI, GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY, PIASKI_GLINIASTE],
-         "kukurydza": [PIASKI, PIASKI_GLINIASTE, GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY],
+         "pszenica_jara": [[], PIASKI_GLINIASTE, GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY + PIASKI],
+         "pszenica_ozima": [[], PIASKI_GLINIASTE, GLINY_LEKKIE_I_PYLY, GLEBY_SREDNIE_I_CIEZKIE + PIASKI],
+         "ziemniak": [[], GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY, PIASKI_GLINIASTE + PIASKI],
+         "kukurydza": [[], PIASKI_GLINIASTE, GLEBY_SREDNIE_I_CIEZKIE, GLINY_LEKKIE_I_PYLY + PIASKI],
      }},
 
     {"id": "temperatura", "nazwa": "Soil temperature", "warstwa": "t_gleby_era5", "jednostka": "°C",
