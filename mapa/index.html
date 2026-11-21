@@ -115,6 +115,14 @@
         .logo-mapy img { width: 100%; height: auto; display: block; filter: drop-shadow(0 0 2px rgba(255,255,255,.9)) drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
         @media (max-width: 600px) { .logo-mapy { width: 110px; } }
         .panel-pusty { color: #666; font-size: 12px; padding: 2px 0; }
+        /* panel warstw z rolnik.js osadzony w zakładce Layers */
+        .panele-lewy-dol .rolnik-osadzony { box-shadow: none; width: auto; border-radius: 0; overflow: visible; }
+        .panele-lewy-dol .rolnik-osadzony .rolnik-naglowek { display: none; }
+        .panele-lewy-dol .rolnik-panel .rolnik-osadzony .rolnik-tresc, .panele-lewy-dol .rolnik-osadzony .rolnik-tresc { padding: 0; max-height: none; overflow: visible; }
+        .panel-warstwy-analityczne, .panel-mapy-zagrozenia { margin-top: 8px; }
+        /* zwinięte panele nie mogą się ściskać – zawsze widać ich nagłówek */
+        .panele-lewy-dol .rolnik-panel.rolnik-panel.zwiniety { flex-shrink: 0; }
+        .panele-lewy-dol > .rolnik-panel { min-height: 32px; }
         </style>
         <title>Farmer101</title>
         <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">

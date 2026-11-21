@@ -576,7 +576,9 @@
   function uprawaPoId(am, id) { return am.uprawy.filter(function (u) { return u.id === id; })[0]; }
 
   function zbudujAnalize(A) {
-    var cel = document.querySelector('.panel-analiza-koncowa');   // panel z resources/panel-warstw.js
+    // mapy zagrożenia trafiają do zakładki „Layers” (resources/panel-warstw.js); „Final analysis” liczy
+    // teraz wynik dla zaznaczonych działek (resources/analiza-cdi.js)
+    var cel = document.querySelector('.panel-mapy-zagrozenia');
     if (!cel) {                                                  // mapa bez tego pliku - własny panel
       var p = document.createElement('div');
       p.className = 'rolnik-panel rolnik-panel-analiza zwiniety';
@@ -590,14 +592,14 @@
     panelAnaliza = cel;
     var am = analizaMeta();
     if (!am) { cel.innerHTML = '<div class="panel-pusty">No analysis data yet.</div>'; return; }
-    var html = '<div class="rolnik-grupa">Crop</div>';
+    var html = '<div class="rolnik-grupa">Hazard map (multi-criteria)</div>';
     am.uprawy.forEach(function (u) {
       var w = warstwaPoId(u.warstwa), brak = !w || w.pokrycie === 0;
       html += '<label class="rolnik-opcja"><input type="radio" name="rolnik-analiza" value="' + u.id + '"' +
         (brak ? ' disabled' : '') + '> ' + u.nazwa + (brak ? ' <i>(no data)</i>' : '') + '</label>';
     });
     html += '<div class="rolnik-przezr">Transparency <input type="range" min="0.2" max="1" step="0.05" value="0.75"></div>' +
-      '<div class="rolnik-legenda"></div><div class="rolnik-analiza-punkt"></div><div class="rolnik-analiza-opis"></div>';
+      '<div class="rolnik-legenda"></div><div class="rolnik-analiza-opis"></div>';
     cel.innerHTML = html;
     var w0 = warstwaPoId(am.uprawy[0].warstwa) || {};      // opis metody i dat danych - na dole zakładki
     cel.querySelector('.rolnik-analiza-opis').innerHTML = (am.opis ? '<div class="rolnik-opis">' + am.opis + '</div>' : '') +
@@ -773,6 +775,7 @@
   }
 
   // wartość warstwy w punkcie (lon, lat) - dla panelu Final analysis (resources/analiza-cdi.js)
+  window.rolnikMeta = function () { return meta; };
   window.rolnikWartosc = function (id, lon, lat) {
     if (!meta) return Promise.resolve(null);
     var w = meta.warstwy.filter(function (x) { return x.id === id; })[0];

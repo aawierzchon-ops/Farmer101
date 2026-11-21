@@ -1,6 +1,10 @@
 /*
  * Zwijane panele w lewym dolnym rogu w stylu panelu rolnika (zielony nagłówek, przycisk +/–):
- * „Warstwy” (zastępuje przycisk warstw qgis2web), „Szczegółowe dane” (rolnik.js), „Uprawy”, „Analiza końcowa”.
+ *  - „Layers”: warstwy qgis2web + warstwy analityczne z rolnik.js (Landsat, ERA5, gleba) + mapy zagrożenia,
+ *  - „Detailed data”: na starcie pusta; wyniki poszczególnych parametrów dla zaznaczonych działek
+ *    (wypełnia resources/analiza-cdi.js po „Calculate”),
+ *  - „Crops”,
+ *  - „Final analysis”: zaznaczanie działek i wynik końcowy (resources/analiza-cdi.js).
  * Do tego logo w prawym dolnym rogu.
  * Ładowany w index.html po qgis2web.js (korzysta z globalnych `map` i `layerSwitcher`).
  */
@@ -26,6 +30,7 @@
       '<button type="button" class="rolnik-zwin" title="Collapse / expand">+</button></div>' +
       '<div class="rolnik-tresc ' + klasaTresci + '">' + (tresc || '') + '</div>';
     var b = p.querySelector('.rolnik-zwin');
+    p.rozwin = function () { if (p.classList.contains('zwiniety')) b.onclick(); };
     b.onclick = function () {
       var zwiniety = p.classList.toggle('zwiniety');
       b.textContent = zwiniety ? '+' : '–';
@@ -35,8 +40,11 @@
     return p;
   }
 
-  // „Warstwy” – lista warstw qgis2web
-  var panel = nowyPanel('Layers', 'panel-warstw-lista', '', rysuj);
+  // „Layers” – lista warstw qgis2web, pod nią warstwy analityczne i mapy zagrożenia (rolnik.js)
+  var panel = nowyPanel('Layers', 'panel-warstw-tresc',
+    '<div class="panel-warstw-lista"></div>' +
+    '<div class="panel-warstwy-analityczne"></div>' +
+    '<div class="panel-mapy-zagrozenia"></div>', rysuj);
   var lista = panel.querySelector('.panel-warstw-lista');
   function rysuj() {
     ol.control.LayerSwitcher.renderPanel(map, lista, { reverse: true, groupSelectStyle: 'children' });
@@ -44,9 +52,12 @@
   rysuj();
   map.getLayers().on('change:length', rysuj);
 
-  // „Uprawy” i „Analiza końcowa” – na razie bez treści
-  var panelUprawy = nowyPanel('Crops', 'panel-uprawy', '<div class="panel-pusty">Coming soon.</div>');
-  nowyPanel('Final analysis', 'panel-analiza-koncowa', '<div class="panel-pusty">Coming soon.</div>');
+  // „Detailed data” – pusta do czasu obliczeń dla zaznaczonych działek
+  window.panelSzczegoly = nowyPanel('Detailed data', 'panel-szczegoly',
+    '<div class="panel-pusty">Select parcels in “Final analysis” and click “Calculate” – the results of each ' +
+    'parameter will appear here.</div>');
+  nowyPanel('Crops', 'panel-uprawy', '<div class="panel-pusty">Coming soon.</div>');
+  window.panelAnalizy = nowyPanel('Final analysis', 'panel-analiza-koncowa', '<div class="panel-pusty">Loading…</div>');
 
   // logo w prawym dolnym rogu
   var logo = document.createElement('div');
@@ -54,11 +65,18 @@
   logo.innerHTML = '<img src="images/logo_duze.png" alt="Farmer101">';
   map.addControl(new ol.control.Control({ element: logo }));
 
-  // panel „Szczegółowe dane” (rolnik.js, dodawany później) wstawiamy pod „Warstwy”, przed „Uprawy”
+  // panel warstw z rolnik.js (dodawany później) osadzamy w „Layers” – bez własnego nagłówka
+  var cel = panel.querySelector('.panel-warstwy-analityczne');
+  cel.innerHTML = '<div class="rolnik-grupa">Analysis layers</div>';
   function przeniesRolnika() {
     var r = document.querySelector('.rolnik-panel.rolnik-ol');
-    if (r && r.parentNode !== kolumna) kolumna.insertBefore(r, panelUprawy);
-    return !!r;
+    if (!r) return false;
+    if (r.parentNode !== cel) {
+      r.classList.remove('zwiniety');
+      r.classList.add('rolnik-osadzony');
+      cel.appendChild(r);
+    }
+    return true;
   }
   if (!przeniesRolnika()) {
     var obserwator = new MutationObserver(function () {

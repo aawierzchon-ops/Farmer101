@@ -1,32 +1,32 @@
 /*
- * Panel „Final analysis”: zaznaczanie działek i obliczanie wskaźnika suszy CDI.
+ * Analiza zaznaczonych działek – zakładki „Final analysis” (wynik końcowy) i „Detailed data” (parametry).
  *
- * 1. „Select parcels” – kliknięcie mapy dodaje działkę (ULDK GUGiK), kliknięcie zaznaczonej ją usuwa.
- *    Dla każdej działki: kategoria gleby I–IV (z warstwy gleby SoilGrids, można zmienić) i dane ERA5
- *    od 1991 r. (opad, ET0, wilgotność gleby 0–100 cm; Open-Meteo).
- * 2. „Calculate CDI” – dla wybranej uprawy i daty analizy:
- *    - SPI-1 (30 dni), SPI-3 (90 dni) – rozkład gamma względem tych samych dni z lat 1991–(rok-1),
- *    - SMA – anomalia wilgotności gleby z 10 dni (z-score),
- *    - KBW – klimatyczny bilans wodny (opad − ET0) z ostatniego zakończonego okresu sześciodekadowego
- *      i próg z rozporządzenia MRiRW z 11.04.2019 (Dz.U. 2019 poz. 739) dla uprawy i kategorii gleby,
- *    - anomalia NDDI – NDDI z Sentinel-2 (60 dni przed datą) względem tych samych tygodni w latach 2018–(rok-1);
- *      liczona tylko w sezonie IV–IX i gdy NDVI ≥ 0,3.
- *    CDI: Watch = SPI-3 < −1 lub SPI-1 < −2 lub KBW poniżej progu; Warning = Watch i SMA < −1;
- *         Alert = Warning i anomalia NDDI > +1 (schemat EDO, NDDI zamiast fAPAR).
- *    Obszar = średnie ważone powierzchnią działek + udział powierzchni na każdym poziomie.
+ * „Final analysis”: „Select parcels” – kliknięcie mapy dodaje działkę (ULDK GUGiK), ponowne – usuwa.
+ * Wybór uprawy i daty, „Calculate” – dopiero wtedy pobierane są dane wszystkich parametrów dla każdej działki:
+ *   - ERA5 / ERA5-Land (Open-Meteo, od 1991 r.): opad, ET0, wilgotność gleby 0–7 i 0–100 cm, temperatura gleby 0–7 cm,
+ *   - Sentinel-2 L2A (Planetary Computer): NDVI, NDWI, NDDI w obrysie działki (60 dni przed datą) i te same
+ *     tygodnie w latach 2018–(rok-1) do anomalii NDDI,
+ *   - gleba (warstwy SoilGrids z mapy): gatunek gleby, porowatość.
+ * Wyniki:
+ *   - „Detailed data”: każdy parametr osobno (dla działek i średnia ważona powierzchnią dla obszaru),
+ *   - „Final analysis”: suma punktów wg kryteriów analizy wielokryterialnej (skrypty/analiza_mapa.py,
+ *     meta.zrodla.analiza) -> klasa zagrożenia I–IV, oraz wskaźnik suszy CDI i ocena wg Dz.U. 2019 poz. 739.
+ *
+ * CDI (schemat European Drought Observatory, NDDI zamiast fAPAR):
+ *   Watch = SPI-3 < −1 lub SPI-1 < −2 lub KBW poniżej progu z rozporządzenia; Warning = Watch i SMA < −1;
+ *   Alert = Warning i anomalia NDDI > +1 (anomalia liczona tylko w IV–IX i przy NDVI ≥ 0,3).
  */
 (function () {
   'use strict';
   if (typeof map === 'undefined' || !window.ol) return;
 
-  var OD_ROKU = 1991, SMA_DNI = 10;
+  var OD_ROKU = 1991, SMA_DNI = 10, DNI_GLEBY = 3;
   var NDDI_DNI = 60, NDDI_OD_ROKU = 2018, NDDI_CZYSTE = 0.8, NDDI_MAKS_SCEN = 6, NDVI_MIN = 0.3;
   var PC = 'https://planetarycomputer.microsoft.com/api';
   var OPEN_METEO = 'https://archive-api.open-meteo.com/v1/archive';
 
   // ---------- Dz.U. 2019 poz. 739, załącznik: wartości KBW [mm] oznaczające suszę ----------
-  // [uprawa][kategoria gleby] -> 14 okresów sześciodekadowych; null = „x” (brak obniżenia plonów
-  // w okresie) albo „-” (uprawa niewskazana na tej kategorii gleby)
+  // [uprawa][kategoria gleby] -> 14 okresów sześciodekadowych; null = „x” lub „-” w tabeli
   var PROGI_KBW = {
     "Zboża ozime": {"I":[-129,-132,-137,-145,-154,-165,-180,-199,-220,null,null,null,null,null],"II":[-150,-153,-158,-166,-175,-186,-201,-220,-241,null,null,null,null,null],"III":[-188,-191,-196,-204,-213,-224,-239,-258,-279,null,null,null,null,null],"IV":[-215,-218,-223,-231,-240,-251,-266,-285,-306,null,null,null,null,null]},
     "Zboża jare": {"I":[-125,-127,-130,-135,-142,-153,-169,-186,-207,null,null,null,null,null],"II":[-144,-146,-149,-154,-161,-172,-188,-205,-226,null,null,null,null,null],"III":[-174,-176,-179,-184,-191,-202,-218,-235,-256,null,null,null,null,null],"IV":[-194,-196,-199,-204,-211,-222,-238,-255,-276,null,null,null,null,null]},
@@ -46,23 +46,23 @@
   var OKRESY = [['03-21', '05-20'], ['04-01', '05-31'], ['04-11', '06-10'], ['04-21', '06-20'], ['05-01', '06-30'],
     ['05-11', '07-10'], ['05-21', '07-20'], ['06-01', '07-31'], ['06-11', '08-10'], ['06-21', '08-20'],
     ['07-01', '08-31'], ['07-11', '09-10'], ['07-21', '09-20'], ['08-01', '09-30']];
-  var UPRAWY_EN = {
-    'Zboża ozime': 'Winter cereals', 'Zboża jare': 'Spring cereals', 'Kukurydza na ziarno': 'Maize (grain)',
-    'Kukurydza na kiszonkę': 'Maize (silage)', 'Rzepak i rzepik': 'Rapeseed', 'Ziemniaki': 'Potatoes',
-    'Burak cukrowy': 'Sugar beet', 'Chmiel': 'Hops', 'Tytoń': 'Tobacco', 'Warzywa gruntowe': 'Field vegetables',
-    'Krzewy owocowe': 'Fruit bushes', 'Drzewa owocowe': 'Fruit trees', 'Truskawki': 'Strawberries',
-    'Rośliny strączkowe': 'Legumes'
+  // gatunek gleby (symbol z warstwy „Soil type”, np. „Sandy loam (pgl)”) -> kategoria gleby wg rozporządzenia
+  var KATEGORIA_GATUNKU = {
+    'pl': 'I', 'plp': 'I', 'ps': 'I', 'psp': 'I',
+    'pgl': 'II', 'pglp': 'II', 'pgm': 'II', 'pgmp': 'II',
+    'gl': 'III', 'glp': 'III', 'płg': 'III', 'płz': 'III', 'płp': 'III',
+    'gs': 'IV', 'gsp': 'IV', 'gc': 'IV', 'gcp': 'IV', 'płi': 'IV', 'i': 'IV', 'ip': 'IV'
   };
-  // klasa uziarnienia USDA (warstwa gleby SoilGrids) -> kategoria gleby wg rozporządzenia (przybliżenie)
-  var KATEGORIA_Z_KLASY = {
-    'piasek': 'I', 'piasek gliniasty': 'I', 'glina piaszczysta': 'II', 'glina': 'III', 'pył gliniasty': 'III',
-    'pył': 'III', 'glina piaszczysto-ilasta': 'IV', 'glina ilasta': 'IV', 'glina pylasto-ilasta': 'IV',
-    'ił piaszczysty': 'IV', 'ił pylasty': 'IV', 'ił': 'IV'
-  };
-  var POZIOMY = [
+  // uprawy analizy wielokryterialnej -> uprawa w tabeli rozporządzenia
+  var UPRAWA_KBW = { pszenica_jara: 'Zboża jare', pszenica_ozima: 'Zboża ozime', ziemniak: 'Ziemniaki',
+    kukurydza: 'Kukurydza na ziarno' };
+  var UPRAWY_DOMYSLNE = [{ id: 'pszenica_jara', nazwa: 'Spring wheat' }, { id: 'pszenica_ozima', nazwa: 'Winter wheat' },
+    { id: 'ziemniak', nazwa: 'Potato' }, { id: 'kukurydza', nazwa: 'Corn' }];
+  var POZIOMY_CDI = [
     { nazwa: 'No drought', kolor: '#2e7d32' }, { nazwa: 'Watch', kolor: '#f9a825' },
     { nazwa: 'Warning', kolor: '#ef6c00' }, { nazwa: 'Alert', kolor: '#c62828' }
   ];
+  var KOLORY_KLAS = ['#1a9641', '#ffd92f', '#f46d43', '#b2182b'];   // klasy zagrożenia I–IV (jak w rolnik.js)
   var RZYM = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
   var stan = { zaznaczanie: false, dzialki: [] };
@@ -87,55 +87,70 @@
     '.cdi-lista button{border:0;background:none;color:#999;cursor:pointer;font-size:15px;padding:0 2px;line-height:1}' +
     '.cdi-wynik{margin-top:8px;font-size:12px}' +
     '.cdi-poziom{color:#fff;border-radius:4px;padding:6px 8px;font-weight:700;font-size:14px;margin-bottom:6px}' +
+    '.cdi-poziom.jasny{color:#222}' +
     '.cdi-poziom small{display:block;font-weight:400;font-size:11px;opacity:.9}' +
-    '.cdi-iung{border:1px solid #ccc;border-radius:4px;padding:4px 6px;margin-bottom:6px}' +
-    '.cdi-iung b.tak{color:#c62828}.cdi-iung b.nie{color:#2e7d32}' +
-    '.cdi-rozklad{display:flex;height:10px;border-radius:3px;overflow:hidden;margin:3px 0 6px}' +
-    '.cdi-tab{width:100%;border-collapse:collapse;font-size:11.5px}' +
+    '.cdi-linia{margin:3px 0;font-size:12px}.cdi-linia b.tak{color:#c62828}.cdi-linia b.nie{color:#2e7d32}' +
+    '.cdi-tab{width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:4px}' +
     '.cdi-tab td,.cdi-tab th{padding:2px 3px;border-bottom:1px solid #f0f0f0;text-align:right;min-width:0;white-space:nowrap}' +
     '.cdi-tab td:first-child,.cdi-tab th:first-child{text-align:left}' +
-    '.cdi-tab th{color:#666;font-weight:500}' +
+    '.cdi-tab th{color:#666;font-weight:500}.cdi-tab tr.obszar td{font-weight:600;border-top:1px solid #ccc}' +
     '.cdi-kropka{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:3px;vertical-align:middle}' +
+    '.cdi-klasa{display:inline-block;border-radius:3px;padding:0 5px;font-size:11px;color:#fff}' +
     '.cdi-uwaga{font-size:11px;color:#666;margin-top:6px}' +
+    '.cdi-sekcja{margin:8px 0 2px;font-weight:600;color:#2e5e2a;border-bottom:1px solid #e3e3e3;font-size:12.5px}' +
+    '.cdi-sekcja small{font-weight:400;color:#777}' +
     '.cdi-zaznaczanie .ol-viewport{cursor:copy}';
   document.head.appendChild(css);
 
   // ------------------------------------------------------------------ warstwa zaznaczonych działek
   function stylDzialki(f) {
-    var d = f.get('dzialka'), poziom = d && d.wynik ? d.wynik.cdi.poziom : -1;
-    var kolor = poziom >= 0 ? POZIOMY[poziom].kolor : '#1565c0';
+    var d = f.get('dzialka'), klasa = d && d.wynik && d.wynik.punkty ? d.wynik.punkty.klasa : null;
+    var kolor = klasa ? KOLORY_KLAS[klasa - 1] : '#1565c0';
     return new ol.style.Style({
       stroke: new ol.style.Stroke({ color: kolor, width: 3 }),
       fill: new ol.style.Fill({ color: kolor + '33' }),
       text: new ol.style.Text({
         text: d ? d.numer : '', font: 'bold 14px Arial, sans-serif', overflow: true,
-        fill: new ol.style.Fill({ color: '#fff' }), stroke: new ol.style.Stroke({ color: kolor, width: 4 })
+        fill: new ol.style.Fill({ color: '#fff' }), stroke: new ol.style.Stroke({ color: klasa === 2 ? '#8a7400' : kolor, width: 4 })
       })
     });
   }
   var zrodlo = new ol.source.Vector();
   map.addLayer(new ol.layer.Vector({ source: zrodlo, zIndex: 999, style: stylDzialki }));
 
-  // ------------------------------------------------------------------ panel
+  // ------------------------------------------------------------------ panele
   var tresc = document.querySelector('.panel-analiza-koncowa');
-  if (!tresc) return;
+  var szczegoly = document.querySelector('.panel-szczegoly');
+  if (!tresc || !szczegoly) return;
+  var PUSTE_SZCZEGOLY = szczegoly.innerHTML;
   var dzis = new Date().toISOString().slice(0, 10);
   tresc.innerHTML =
     '<div class="cdi-przyciski"><button type="button" class="cdi-zaznacz">Select parcels</button>' +
     '<button type="button" class="cdi-wyczysc">Clear</button></div>' +
     '<div class="cdi-pomoc">Turn on “Select parcels”, then click parcels on the map (click again to remove).</div>' +
-    '<div class="cdi-ustawienia"><label>Crop</label><select class="cdi-uprawa">' +
-    Object.keys(PROGI_KBW).map(function (u) {
-      return '<option value="' + u + '"' + (u === 'Zboża jare' ? ' selected' : '') + '>' + (UPRAWY_EN[u] || u) + '</option>';
-    }).join('') + '</select>' +
+    '<div class="cdi-ustawienia"><label>Crop</label><select class="cdi-uprawa"></select>' +
     '<label>Date</label><input type="date" class="cdi-data" max="' + dzis + '" min="' + (NDDI_OD_ROKU + 1) + '-01-01" value="' + dzis + '"></div>' +
     '<ul class="cdi-lista"></ul>' +
-    '<button type="button" class="cdi-oblicz" disabled>Calculate CDI</button>' +
+    '<button type="button" class="cdi-oblicz" disabled>Calculate</button>' +
     '<div class="cdi-wynik"></div>';
   var $ = function (s) { return tresc.querySelector(s); };
   var przyciskZaznacz = $('.cdi-zaznacz'), lista = $('.cdi-lista'), przyciskOblicz = $('.cdi-oblicz'), wynik = $('.cdi-wynik');
   var poleUprawa = $('.cdi-uprawa'), poleData = $('.cdi-data');
   var liczenie = false;
+
+  function analizaMeta() { var m = window.rolnikMeta && window.rolnikMeta(); return m && m.zrodla && m.zrodla.analiza; }
+  function uprawy() { var am = analizaMeta(); return (am && am.uprawy) || UPRAWY_DOMYSLNE; }
+  function wypelnijUprawy() {
+    var wybrana = poleUprawa.value || 'pszenica_jara';
+    poleUprawa.innerHTML = uprawy().map(function (u) {
+      return '<option value="' + u.id + '"' + (u.id === wybrana ? ' selected' : '') + '>' + esc(u.nazwa) + '</option>';
+    }).join('');
+  }
+  wypelnijUprawy();
+  (function czekajNaMete(n) {            // rolnik.js wczytuje meta.json asynchronicznie
+    if (analizaMeta()) { wypelnijUprawy(); return; }
+    if (n < 100) setTimeout(function () { czekajNaMete(n + 1); }, 200);
+  })(0);
 
   przyciskZaznacz.onclick = function () {
     stan.zaznaczanie = !stan.zaznaczanie;
@@ -144,46 +159,49 @@
     document.documentElement.classList.toggle('cdi-zaznaczanie', stan.zaznaczanie);
     if (stan.zaznaczanie && window.container) container.style.display = 'none';
   };
-  $('.cdi-wyczysc').onclick = function () { stan.dzialki = []; zrodlo.clear(); wynik.innerHTML = ''; odswiezListe(); };
+  $('.cdi-wyczysc').onclick = function () { stan.dzialki = []; zrodlo.clear(); wyczyscWyniki(); };
   przyciskOblicz.onclick = function () { oblicz(); };
-  poleUprawa.onchange = poleData.onchange = function () { wynik.innerHTML = ''; wyczyscWyniki(); };
+  poleUprawa.onchange = poleData.onchange = function () { wyczyscWyniki(); };
 
+  function f1(v) { return isFinite(v) ? v.toFixed(1) : '–'; }
   function f2(v) { return isFinite(v) ? v.toFixed(2) : '–'; }
-  function f0(v) { return isFinite(v) ? Math.round(v) : '–'; }
+  function f0(v) { return isFinite(v) ? String(Math.round(v)) : '–'; }
   function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function srednia(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : NaN; }
   function etykietaOkresu(o) {
     var a = o[0].split('-'), b = o[1].split('-');
     return (+a[1]) + ' ' + RZYM[+a[0]] + '–' + (+b[1]) + ' ' + RZYM[+b[0]];
   }
-  function wyczyscWyniki() { stan.dzialki.forEach(function (d) { d.wynik = null; d.feature.changed(); }); odswiezListe(); }
+  function wyczyscWyniki() {
+    stan.dzialki.forEach(function (d) { d.wynik = null; d.feature.changed(); });
+    wynik.innerHTML = '';
+    szczegoly.innerHTML = PUSTE_SZCZEGOLY;
+    odswiezListe();
+  }
 
   function odswiezListe() {
     lista.innerHTML = '';
     stan.dzialki.forEach(function (d) {
-      var li = document.createElement('li');
-      var status = d.blad ? 'error' : (d.gotowe ? (d.wynik ? POZIOMY[d.wynik.cdi.poziom].nazwa : 'ready') : 'loading…');
-      li.innerHTML = '<span class="cdi-nazwa" title="' + esc(d.teryt + (d.klasaGleby ? ' · ' + d.klasaGleby : '')) + '">' +
+      var li = document.createElement('li'), p = d.wynik && d.wynik.punkty;
+      var status = d.blad ? 'error' : (p && p.klasa ? 'class ' + RZYM[p.klasa] : 'selected');
+      li.innerHTML = '<span class="cdi-nazwa" title="' + esc(d.teryt + (d.gleba ? ' · ' + d.gleba : '')) + '">' +
         esc(d.numer) + ' · ' + esc(d.obreb) + ' <small>(' + d.ha.toFixed(2) + ' ha)</small></span>' +
         '<select title="Soil category (Dz.U. 2019 poz. 739)">' + ['I', 'II', 'III', 'IV'].map(function (k) {
           return '<option' + (k === d.kategoria ? ' selected' : '') + '>' + k + '</option>';
         }).join('') + '</select><span class="cdi-status">' + status + '</span><button type="button" title="Remove">×</button>';
-      li.querySelector('select').onchange = function () { d.kategoria = this.value; d.wynik = null; wynik.innerHTML = ''; odswiezListe(); };
+      li.querySelector('select').onchange = function () { d.kategoria = this.value; wyczyscWyniki(); };
       li.querySelector('button').onclick = function () { usun(d); };
       lista.appendChild(li);
     });
-    var gotowe = stan.dzialki.filter(function (d) { return d.gotowe; }).length, n = stan.dzialki.length;
-    przyciskOblicz.disabled = liczenie || !n || gotowe < n;
-    if (!liczenie) {
-      przyciskOblicz.textContent = !n ? 'Calculate CDI' : (gotowe < n ? 'Loading data… (' + gotowe + '/' + n + ')'
-        : 'Calculate CDI (' + n + (n === 1 ? ' parcel)' : ' parcels)'));
-    }
+    var n = stan.dzialki.length;
+    przyciskOblicz.disabled = liczenie || !n;
+    if (!liczenie) przyciskOblicz.textContent = !n ? 'Calculate' : 'Calculate (' + n + (n === 1 ? ' parcel)' : ' parcels)');
   }
 
   function usun(d) {
     stan.dzialki = stan.dzialki.filter(function (x) { return x !== d; });
     zrodlo.removeFeature(d.feature);
-    wynik.innerHTML = '';
-    odswiezListe();
+    wyczyscWyniki();
   }
 
   // ------------------------------------------------------------------ zaznaczanie na mapie
@@ -203,44 +221,55 @@
     });
   });
 
+  function punktWewnatrz(geom) {
+    var g = geom.getType() === 'MultiPolygon' ? geom.getPolygon(0) : geom;
+    return g.getInteriorPoint ? g.getInteriorPoint().getCoordinates() : ol.extent.getCenter(geom.getExtent());
+  }
+
   function dodaj(p) {
     var proj = map.getView().getProjection();
     var feature = new ol.format.WKT().readFeature(p.wkt, { dataProjection: 'EPSG:4326', featureProjection: proj });
     var wgs = new ol.format.WKT().readFeature(p.wkt);
-    var srodek = ol.extent.getCenter(wgs.getGeometry().getExtent());
+    var srodek = punktWewnatrz(wgs.getGeometry());
     var geo = new ol.format.GeoJSON().writeFeatureObject(wgs);
     geo.properties = {};
     var d = {
       teryt: p.teryt, numer: p.numer, obreb: p.obreb, gmina: p.gmina, feature: feature, geojson: geo,
-      lon: srodek[0], lat: srodek[1], kategoria: 'II', klasaGleby: null, nddiCache: {},
-      ha: ol.sphere.getArea(feature.getGeometry(), { projection: proj }) / 1e4, gotowe: false
+      lon: srodek[0], lat: srodek[1], kategoria: 'II', gleba: null, nddiCache: {},
+      ha: ol.sphere.getArea(feature.getGeometry(), { projection: proj }) / 1e4
     };
     feature.set('dzialka', d);
     zrodlo.addFeature(feature);
     stan.dzialki.push(d);
-    wynik.innerHTML = '';
-    odswiezListe();
-    var gleba = window.rolnikWartosc ? window.rolnikWartosc('gleba_klasa', d.lon, d.lat) : Promise.resolve(null);
-    Promise.all([daneKlimatu(d.lon, d.lat), gleba]).then(function (w) {
-      d.klimat = w[0];
-      if (w[1] && w[1].tekst) { d.klasaGleby = w[1].tekst; d.kategoria = KATEGORIA_Z_KLASY[w[1].tekst] || d.kategoria; }
-    }).catch(function (e) { d.blad = e.message; }).then(function () { d.gotowe = true; odswiezListe(); });
+    wyczyscWyniki();
+    // gatunek gleby z warstwy mapy – tylko po to, żeby od razu ustawić kategorię gleby na liście
+    if (window.rolnikWartosc) {
+      window.rolnikWartosc('gleba_klasa', d.lon, d.lat).then(function (v) {
+        if (v && v.tekst) { d.gleba = v.tekst; d.kategoria = kategoriaGleby(v.tekst) || d.kategoria; odswiezListe(); }
+      });
+    }
   }
 
-  // ------------------------------------------------------------------ dane ERA5 (Open-Meteo)
+  function kategoriaGleby(tekst) {
+    var m = /\(([^)]+)\)\s*$/.exec(tekst || '');
+    return m ? KATEGORIA_GATUNKU[m[1].trim().toLowerCase()] : null;
+  }
+
+  // ------------------------------------------------------------------ ERA5 / ERA5-Land (Open-Meteo)
   var klimatCache = {};
   function daneKlimatu(lon, lat) {
     var klucz = lon.toFixed(1) + ',' + lat.toFixed(1);    // sąsiednie działki dzielą jeden węzeł ERA5
     if (klimatCache[klucz]) return klimatCache[klucz];
     var url = OPEN_METEO + '?latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3) +
       '&start_date=' + OD_ROKU + '-01-01&end_date=' + dzis +
-      '&daily=precipitation_sum,et0_fao_evapotranspiration,soil_moisture_0_to_100cm_mean&timezone=Europe%2FWarsaw';
+      '&daily=precipitation_sum,et0_fao_evapotranspiration,soil_moisture_0_to_100cm_mean,soil_moisture_0_to_7cm_mean,' +
+      'soil_temperature_0_to_7cm_mean&timezone=Europe%2FWarsaw';
     klimatCache[klucz] = fetch(url).then(function (r) {
       if (!r.ok) return r.text().then(function (t) { throw new Error('Open-Meteo ' + r.status + ' ' + t.slice(0, 80)); });
       return r.json();
     }).then(function (d) {
       var dl = d.daily, k = { t: dl.time, p: dl.precipitation_sum, et: dl.et0_fao_evapotranspiration,
-        sm: dl.soil_moisture_0_to_100cm_mean, idx: {} };
+        sm: dl.soil_moisture_0_to_100cm_mean, sm7: dl.soil_moisture_0_to_7cm_mean, st7: dl.soil_temperature_0_to_7cm_mean, idx: {} };
       k.t.forEach(function (x, i) { k.idx[x] = i; });
       var o = k.t.length - 1;
       while (o > 0 && (k.p[o] === null || k.sm[o] === null || k.et[o] === null)) o--;
@@ -251,7 +280,7 @@
     return klimatCache[klucz];
   }
 
-  function wskaznikiKlimatu(k, data, uprawa, kategoria) {
+  function wskaznikiKlimatu(k, data, uprawaKbw, kategoria) {
     var koniec = data > k.ostatni ? k.ostatni : data, i1 = k.idx[koniec], rokK = +koniec.slice(0, 4);
     function okno(tab, j1, n, suma) {
       if (j1 - n + 1 < 0) return null;
@@ -272,7 +301,7 @@
     }
     function spi(n) {
       var x = okno(k.p, i1, n, true), h = zLat(k.p, n, true);
-      return { wartosc: spiZGammy(x, h), suma: x, srednia: srednia(h) };
+      return { wartosc: spiZGammy(x, h), suma: x, norma: srednia(h) };
     }
     var smX = okno(k.sm, i1, SMA_DNI, false), smH = zLat(k.sm, SMA_DNI, false), smS = srednia(smH);
     var smSd = Math.sqrt(smH.reduce(function (a, b) { return a + (b - smS) * (b - smS); }, 0) / (smH.length - 1));
@@ -282,17 +311,20 @@
     for (var o = OKRESY.length - 1; o >= 0; o--) {
       var od = rokK + '-' + OKRESY[o][0], doD = rokK + '-' + OKRESY[o][1];
       if (doD <= koniec) {
-        var j0 = k.idx[od], j2 = k.idx[doD], s = 0, ok = true;
-        for (var j = j0; j <= j2; j++) { if (k.p[j] === null || k.et[j] === null) { ok = false; break; } s += k.p[j] - k.et[j]; }
-        var prog = (PROGI_KBW[uprawa] && PROGI_KBW[uprawa][kategoria]) ? PROGI_KBW[uprawa][kategoria][o] : null;
-        kbw = { okres: o, wartosc: ok ? s : NaN, prog: prog, susza: ok && prog !== null && s < prog, poSezonie: koniec > rokK + '-09-30' };
+        var j0 = k.idx[od], j2 = k.idx[doD], sp = 0, se = 0, ok = true;
+        for (var j = j0; j <= j2; j++) { if (k.p[j] === null || k.et[j] === null) { ok = false; break; } sp += k.p[j]; se += k.et[j]; }
+        var prog = (PROGI_KBW[uprawaKbw] && PROGI_KBW[uprawaKbw][kategoria]) ? PROGI_KBW[uprawaKbw][kategoria][o] : null;
+        kbw = { okres: o, opad: ok ? sp : NaN, et0: ok ? se : NaN, wartosc: ok ? sp - se : NaN, prog: prog,
+          susza: ok && prog !== null && sp - se < prog, poSezonie: koniec > rokK + '-09-30' };
         break;
       }
     }
-    return { data: koniec, spi1: spi(30), spi3: spi(90), sma: { wartosc: (smX - smS) / smSd }, kbw: kbw };
+    return {
+      data: koniec, spi1: spi(30), spi3: spi(90),
+      sma: { wartosc: (smX - smS) / smSd, teraz: smX, norma: smS },
+      tGleby: okno(k.st7, i1, DNI_GLEBY, false), wilg7: okno(k.sm7, i1, DNI_GLEBY, false), kbw: kbw
+    };
   }
-
-  function srednia(a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : NaN; }
 
   // SPI: rozkład gamma (estymator Thoma) dopasowany do sum z poprzednich lat, z prawdopodobieństwem zera
   function spiZGammy(x, hist) {
@@ -342,14 +374,13 @@
     return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
   }
 
-  // ------------------------------------------------------------------ NDDI (Sentinel-2) i jego anomalia
+  // ------------------------------------------------------------------ Sentinel-2: NDVI, NDWI, NDDI i anomalia NDDI
   var NDVI_X = '(B08-B04)/(B08+B04)', NDWI_X = '(B08-B11)/(B08+B11)';
   var WYRAZENIA = [NDVI_X, NDWI_X, '(' + NDVI_X + '-' + NDWI_X + ')/(' + NDVI_X + '+' + NDWI_X + ')',
     'where((SCL>=4)&(SCL<=6),1.0,0.0)'];   // udział czystych pikseli (SCL 4 roślinność, 5 gleba, 6 woda)
 
   function przesun(data, dni) { return new Date(new Date(data + 'T12:00:00Z').getTime() + dni * 864e5).toISOString().slice(0, 10); }
 
-  // średnie NDDI i NDVI z bezchmurnych scen w oknie [od, do]
   function nddiOkna(d, od, doD) {
     var klucz = od + '/' + doD;
     if (d.nddiCache[klucz]) return d.nddiCache[klucz];
@@ -371,7 +402,8 @@
       })
       .then(function (w) {
         var ok = w.filter(function (s) { return s && s.czyste >= NDDI_CZYSTE && isFinite(s.nddi); });
-        return { nddi: srednia(ok.map(function (s) { return s.nddi; })), ndvi: srednia(ok.map(function (s) { return s.ndvi; })), sceny: ok.length };
+        var pole = function (k) { return srednia(ok.map(function (s) { return s[k]; })); };
+        return { nddi: pole('nddi'), ndvi: pole('ndvi'), ndwi: pole('ndwi'), sceny: ok.length };
       });
     d.nddiCache[klucz].catch(function () { delete d.nddiCache[klucz]; });
     return d.nddiCache[klucz];
@@ -387,7 +419,7 @@
         if (!st) return null;
         var v = WYRAZENIA.map(function (x) { return st[x]; });
         if (!v[0] || !v[0].count) return null;
-        return { ndvi: v[0].mean, nddi: v[2].median, czyste: v[3] ? v[3].mean : 0 };
+        return { ndvi: v[0].mean, ndwi: v[1].mean, nddi: v[2].median, czyste: v[3] ? v[3].mean : 0 };
       })
       .catch(function () { return null; });
   }
@@ -404,136 +436,268 @@
     return Promise.all(start).then(function () { return wyniki; });
   }
 
-  // NDDI w oknie 60 dni przed datą + te same okna w latach NDDI_OD_ROKU..rok-1 -> anomalia (z-score)
-  function anomaliaNddi(d, data) {
-    var mies = +data.slice(5, 7), rok = +data.slice(0, 4), od = przesun(data, -NDDI_DNI);
-    var lata = [];
+  function roslinnosc(d, data) {
+    var mies = +data.slice(5, 7), rok = +data.slice(0, 4), od = przesun(data, -NDDI_DNI), lata = [];
     for (var r = NDDI_OD_ROKU; r < rok; r++) lata.push(r);
     return nddiOkna(d, od, data).then(function (teraz) {
-      var wynikNddi = { nddi: teraz.nddi, ndvi: teraz.ndvi, sceny: teraz.sceny, z: NaN, lat: 0, powod: '' };
-      if (mies < 4 || mies > 9) { wynikNddi.powod = 'outside growing season (IV–IX)'; return wynikNddi; }
-      if (!teraz.sceny) { wynikNddi.powod = 'no cloud-free image'; return wynikNddi; }
-      if (!(teraz.ndvi >= NDVI_MIN)) { wynikNddi.powod = 'NDVI < ' + NDVI_MIN + ' (bare soil)'; return wynikNddi; }
+      var w = { nddi: teraz.nddi, ndvi: teraz.ndvi, ndwi: teraz.ndwi, sceny: teraz.sceny, od: od, z: NaN, lat: 0, powod: '' };
+      if (mies < 4 || mies > 9) { w.powod = 'outside growing season (IV–IX)'; return w; }
+      if (!teraz.sceny) { w.powod = 'no cloud-free image'; return w; }
+      if (!(teraz.ndvi >= NDVI_MIN)) { w.powod = 'NDVI < ' + NDVI_MIN + ' (bare soil)'; return w; }
       return poKolei(lata, function (r) {
         return nddiOkna(d, r + od.slice(4), r + data.slice(4)).catch(function () { return null; });
       }, 2).then(function (hist) {
         var h = hist.filter(function (x) { return x && x.sceny && isFinite(x.nddi); }).map(function (x) { return x.nddi; });
-        wynikNddi.lat = h.length;
-        if (h.length < 3) { wynikNddi.powod = 'fewer than 3 years of history'; return wynikNddi; }
+        w.lat = h.length;
+        if (h.length < 3) { w.powod = 'fewer than 3 years of history'; return w; }
         var s = srednia(h), sd = Math.sqrt(h.reduce(function (a, b) { return a + (b - s) * (b - s); }, 0) / (h.length - 1));
-        wynikNddi.srednia = s;
-        wynikNddi.z = sd > 0 ? (teraz.nddi - s) / sd : NaN;
-        return wynikNddi;
+        w.norma = s;
+        w.z = sd > 0 ? (teraz.nddi - s) / sd : NaN;
+        return w;
       });
     });
   }
 
-  // ------------------------------------------------------------------ CDI
+  // ------------------------------------------------------------------ punkty wg kryteriów analizy wielokryterialnej
+  // (te same kryteria i progi co skrypty/analiza_mapa.py, z meta.zrodla.analiza)
+  function klasaKryterium(k, uprawa, v) {
+    if (!v) return null;
+    if (k.grupy) {
+      var nazwa = String(v.tekst || '').split(' (')[0].trim().toLowerCase(), grupy = k.grupy[uprawa] || [];
+      for (var i = 0; i < grupy.length; i++) {
+        if (grupy[i].some(function (n) { return n.toLowerCase() === nazwa; })) return i + 1;
+      }
+      return null;
+    }
+    if (!isFinite(v.liczba)) return null;
+    var wiersze = k.przedzialy[uprawa] || k.przedzialy['*'] || [];
+    for (var j = 0; j < wiersze.length; j++) {
+      var od = wiersze[j][0], doo = wiersze[j][1];
+      if ((od === null || v.liczba >= od) && (doo === null || v.liczba < doo)) return wiersze[j][2];
+    }
+    return null;
+  }
+
+  function punktyUprawy(am, uprawa, wart) {
+    var suma = 0, maks = 0, komplet = true;
+    var wiersze = am.kryteria.map(function (k) {
+      var v = wart[k.warstwa], klasa = klasaKryterium(k, uprawa, v), max = Math.max.apply(null, k.punkty);
+      var punkty = klasa ? k.punkty[klasa - 1] : null;
+      if (punkty !== null) { suma += punkty; maks += max; } else if (k.wymagane) komplet = false;
+      return { k: k, v: v, klasa: klasa, punkty: punkty, max: max };
+    });
+    var wynikP = (komplet && maks > 0) ? Math.floor(suma * am.maks_punktow / maks + 0.5) : null;
+    return { wiersze: wiersze, suma: suma, maks: maks, wynik: wynikP, klasa: klasaZagrozenia(am, wynikP) };
+  }
+  function klasaZagrozenia(am, wynikP) {
+    var klasa = null;
+    if (wynikP !== null && isFinite(wynikP)) am.klasy.forEach(function (c, i) { if (wynikP >= c.od && wynikP <= c.do) klasa = i + 1; });
+    return klasa;
+  }
+
   function poziomCDI(spi1, spi3, sma, kbwSusza, zNddi) {
     var watch = spi3 < -1 || spi1 < -2 || !!kbwSusza;
     var warning = watch && sma < -1;
     var alert = warning && zNddi > 1;
-    return { poziom: alert ? 3 : warning ? 2 : watch ? 1 : 0 };
+    return alert ? 3 : warning ? 2 : watch ? 1 : 0;
   }
 
+  // ------------------------------------------------------------------ obliczenia
   function oblicz() {
-    var data = poleData.value || dzis, uprawa = poleUprawa.value;
-    var dane = stan.dzialki.filter(function (d) { return d.klimat; });
-    if (!dane.length) { wynik.innerHTML = '<div class="rolnik-blad">No data for the selected parcels.</div>'; return; }
+    var data = poleData.value || dzis, uprawa = poleUprawa.value, uprawaKbw = UPRAWA_KBW[uprawa] || 'Zboża jare';
+    var dane = stan.dzialki.slice();
+    if (!dane.length) return;
     liczenie = true;
-    przyciskOblicz.disabled = true;
+    odswiezListe();
     var gotowe = 0;
-    przyciskOblicz.textContent = 'Loading Sentinel-2 (0/' + dane.length + ')…';
+    przyciskOblicz.textContent = 'Downloading data (0/' + dane.length + ')…';
+    wynik.innerHTML = '';
+    szczegoly.innerHTML = '<div class="panel-pusty">Downloading data…</div>';
     poKolei(dane, function (d) {
-      d.wynik = null;
-      var kl = wskaznikiKlimatu(d.klimat, data, uprawa, d.kategoria);
-      return anomaliaNddi(d, kl.data).catch(function (e) { return { z: NaN, powod: e.message }; }).then(function (n) {
-        d.wynik = { kl: kl, nddi: n };
-        d.wynik.cdi = poziomCDI(kl.spi1.wartosc, kl.spi3.wartosc, kl.sma.wartosc, kl.kbw && kl.kbw.susza, n.z);
+      d.wynik = null; d.blad = null;
+      var gleby = window.rolnikWartosc ? Promise.all([window.rolnikWartosc('gleba_klasa', d.lon, d.lat),
+        window.rolnikWartosc('porowatosc', d.lon, d.lat)]) : Promise.resolve([null, null]);
+      return Promise.all([daneKlimatu(d.lon, d.lat), gleby]).then(function (w) {
+        var kl = wskaznikiKlimatu(w[0], data, uprawaKbw, d.kategoria);
+        if (w[1][0] && w[1][0].tekst) d.gleba = w[1][0].tekst;
+        var porowatosc = w[1][1] ? w[1][1].liczba : NaN;
+        return roslinnosc(d, kl.data).catch(function (e) { return { z: NaN, powod: e.message }; }).then(function (r) {
+          var woda = isFinite(porowatosc) && kl.wilg7 !== null ? Math.min(100, Math.max(0, 100 * kl.wilg7 / (porowatosc / 100))) : NaN;
+          d.wynik = { kl: kl, rosl: r, porowatosc: porowatosc, woda: woda };
+          d.wynik.cdi = poziomCDI(kl.spi1.wartosc, kl.spi3.wartosc, kl.sma.wartosc, kl.kbw && kl.kbw.susza, r.z);
+          var am = analizaMeta();
+          if (am) {
+            d.wynik.punkty = punktyUprawy(am, uprawa, {
+              nddi: isFinite(r.nddi) && r.ndvi >= 0.2 ? { liczba: r.nddi } : null,
+              gleba_klasa: d.gleba ? { tekst: d.gleba } : null,
+              porowatosc: isFinite(porowatosc) ? { liczba: porowatosc } : null,
+              t_gleby_era5: kl.tGleby !== null ? { liczba: kl.tGleby } : null,
+              woda_w_porach: isFinite(woda) ? { liczba: woda } : null
+            });
+          }
+        });
+      }).catch(function (e) { d.blad = e.message; }).then(function () {
         d.feature.changed();
-        przyciskOblicz.textContent = 'Loading Sentinel-2 (' + (++gotowe) + '/' + dane.length + ')…';
+        przyciskOblicz.textContent = 'Downloading data (' + (++gotowe) + '/' + dane.length + ')…';
       });
-    }, 2).then(function () { pokazWynik(dane, data, uprawa); })
-      .catch(function (e) { wynik.innerHTML = '<div class="rolnik-blad">' + esc(e.message) + '</div>'; })
-      .then(function () { liczenie = false; odswiezListe(); });
+    }, 2).then(function () {
+      var ok = dane.filter(function (d) { return d.wynik; });
+      if (!ok.length) {
+        wynik.innerHTML = '<div class="rolnik-blad">Could not download the data: ' + esc((dane[0] && dane[0].blad) || '') + '</div>';
+        szczegoly.innerHTML = PUSTE_SZCZEGOLY;
+        return;
+      }
+      pokazWynik(ok, uprawa);
+      pokazSzczegoly(ok, uprawa);
+      if (window.panelSzczegoly && window.panelSzczegoly.rozwin) window.panelSzczegoly.rozwin();
+    }).then(function () { liczenie = false; odswiezListe(); });
   }
 
-  function pokazWynik(dane, data, uprawa) {
-    var ha = dane.reduce(function (a, d) { return a + d.ha; }, 0);
-    function srW(fn) {
-      var s = 0, w = 0;
-      dane.forEach(function (d) { var v = fn(d); if (isFinite(v)) { s += v * d.ha; w += d.ha; } });
-      return w ? s / w : NaN;
-    }
-    var spi1 = srW(function (d) { return d.wynik.kl.spi1.wartosc; }), spi3 = srW(function (d) { return d.wynik.kl.spi3.wartosc; });
-    var sma = srW(function (d) { return d.wynik.kl.sma.wartosc; }), zN = srW(function (d) { return d.wynik.nddi.z; });
-    var nddi = srW(function (d) { return d.wynik.nddi.nddi; }), ndvi = srW(function (d) { return d.wynik.nddi.ndvi; });
-    var zKbw = dane.filter(function (d) { return d.wynik.kl.kbw && d.wynik.kl.kbw.prog !== null; });
-    var haKbwSusza = dane.reduce(function (a, d) { return a + (d.wynik.kl.kbw && d.wynik.kl.kbw.susza ? d.ha : 0); }, 0);
-    var udzialKbw = ha ? 100 * haKbwSusza / ha : 0;
-    var cdi = poziomCDI(spi1, spi3, sma, udzialKbw >= 50, zN);
-    var P = POZIOMY[cdi.poziom], dataD = dane[0].wynik.kl.data, kbw0 = dane[0].wynik.kl.kbw;
+  function srW(dane, fn) {
+    var s = 0, w = 0;
+    dane.forEach(function (d) { var v = fn(d); if (isFinite(v)) { s += v * d.ha; w += d.ha; } });
+    return w ? s / w : NaN;
+  }
+  function nazwaUprawy(id) { var u = uprawy().filter(function (x) { return x.id === id; })[0]; return u ? u.nazwa : id; }
+  function znaczekKlasy(am, klasa) {
+    if (!klasa) return '–';
+    return '<span class="cdi-klasa" style="background:' + KOLORY_KLAS[klasa - 1] + (klasa === 2 ? ';color:#222' : '') + '">' +
+      esc(am ? am.klasy[klasa - 1].nazwa : RZYM[klasa]) + '</span>';
+  }
 
-    var h = '<div class="cdi-poziom" style="background:' + P.kolor + '">CDI: ' + P.nazwa +
-      '<small>' + dane.length + (dane.length === 1 ? ' parcel' : ' parcels') + ', ' + ha.toFixed(2) + ' ha · ' +
-      esc(UPRAWY_EN[uprawa] || uprawa) + ' · data to ' + dataD + '</small></div>';
-
-    // ocena wg rozporządzenia (KBW)
-    h += '<div class="cdi-iung">';
-    if (!kbw0) {
-      h += 'Drought risk (Dz.U. 2019 poz. 739): <i>no complete 60-day period yet this season (first ends 20 V).</i>';
+  // ------------------------------------------------------------------ „Final analysis”: wynik końcowy
+  function pokazWynik(dane, uprawa) {
+    var am = analizaMeta(), ha = dane.reduce(function (a, d) { return a + d.ha; }, 0), dataD = dane[0].wynik.kl.data;
+    var h = '';
+    var zPunktami = dane.filter(function (d) { return d.wynik.punkty && d.wynik.punkty.wynik !== null; });
+    if (am && zPunktami.length) {
+      var wynikP = Math.round(srW(zPunktami, function (d) { return d.wynik.punkty.wynik; }));
+      var klasa = klasaZagrozenia(am, wynikP);
+      h += '<div class="cdi-poziom' + (klasa === 2 ? ' jasny' : '') + '" style="background:' + (klasa ? KOLORY_KLAS[klasa - 1] : '#777') + '">' +
+        'Hazard: ' + esc(klasa ? am.klasy[klasa - 1].nazwa : '–') + ' · ' + wynikP + ' / ' + am.maks_punktow + ' pts' +
+        '<small>' + esc(nazwaUprawy(uprawa)) + ' · ' + dane.length + (dane.length === 1 ? ' parcel' : ' parcels') + ', ' +
+        ha.toFixed(2) + ' ha · data to ' + dataD + '</small></div>';
+      h += '<table class="cdi-tab"><tr><th>Criterion</th><th>Points</th></tr>' + am.kryteria.map(function (k, i) {
+        var pk = srW(zPunktami, function (d) { var x = d.wynik.punkty.wiersze[i]; return x.punkty === null ? NaN : x.punkty; });
+        return '<tr><td>' + esc(k.nazwa) + '</td><td>' + (isFinite(pk) ? f1(pk) : '–') + ' / ' + Math.max.apply(null, k.punkty) + '</td></tr>';
+      }).join('') + '<tr class="obszar"><td>Total (scaled to ' + am.maks_punktow + ')</td><td>' + wynikP + ' / ' + am.maks_punktow + '</td></tr></table>';
     } else {
-      h += 'Drought risk (Dz.U. 2019 poz. 739), period ' + etykietaOkresu(OKRESY[kbw0.okres]) +
-        (kbw0.poSezonie ? ' (last of the season)' : '') + ': ';
-      if (!zKbw.length) h += '<i>not applicable for this crop and period.</i>';
-      else h += '<b class="' + (haKbwSusza ? 'tak' : 'nie') + '">' + (haKbwSusza ? 'YES' : 'NO') + '</b> – ' +
-        udzialKbw.toFixed(0) + '% of area' +
-        (dane.length === 1 ? '<br>KBW ' + f0(kbw0.wartosc) + ' mm, threshold ' + (kbw0.prog === null ? 'x' : kbw0.prog + ' mm') +
-          ' (soil cat. ' + dane[0].kategoria + ')' : '');
+      h += '<div class="cdi-uwaga">Multi-criteria scoring unavailable (no analysis data on the map or missing soil data).</div>';
     }
-    h += '</div>';
 
-    // rozkład powierzchni na poziomy CDI
-    var pow = [0, 0, 0, 0];
-    dane.forEach(function (d) { pow[d.wynik.cdi.poziom] += d.ha; });
-    h += '<div class="cdi-rozklad">' + pow.map(function (p, i) {
-      return p ? '<span title="' + POZIOMY[i].nazwa + ' ' + (100 * p / ha).toFixed(0) + '%" style="flex:' + p + ';background:' +
-        POZIOMY[i].kolor + '"></span>' : '';
-    }).join('') + '</div><div style="font-size:11px;margin-top:-3px;margin-bottom:6px">' + pow.map(function (p, i) {
-      return p ? '<span class="cdi-kropka" style="background:' + POZIOMY[i].kolor + '"></span>' + POZIOMY[i].nazwa + ' ' +
-        (100 * p / ha).toFixed(0) + '%' : '';
-    }).filter(Boolean).join(' · ') + '</div>';
+    // susza: CDI i ocena wg rozporządzenia
+    var cdi = poziomCDI(srW(dane, function (d) { return d.wynik.kl.spi1.wartosc; }), srW(dane, function (d) { return d.wynik.kl.spi3.wartosc; }),
+      srW(dane, function (d) { return d.wynik.kl.sma.wartosc; }), false, srW(dane, function (d) { return d.wynik.rosl.z; }));
+    var haKbw = dane.reduce(function (a, d) { return a + (d.wynik.kl.kbw && d.wynik.kl.kbw.susza ? d.ha : 0); }, 0);
+    var udzialKbw = 100 * haKbw / ha;
+    if (udzialKbw >= 50 && cdi === 0) cdi = 1;
+    var kbw0 = dane[0].wynik.kl.kbw, stosuje = dane.some(function (d) { return d.wynik.kl.kbw && d.wynik.kl.kbw.prog !== null; });
+    h += '<div class="cdi-linia"><span class="cdi-kropka" style="background:' + POZIOMY_CDI[cdi].kolor + '"></span>Drought (CDI): <b>' +
+      POZIOMY_CDI[cdi].nazwa + '</b></div>';
+    h += '<div class="cdi-linia">Drought risk (Dz.U. 2019 poz. 739): ' + (!kbw0 ? '<i>no complete period yet</i>' :
+      !stosuje ? '<i>not applicable (' + etykietaOkresu(OKRESY[kbw0.okres]) + ')</i>' :
+        '<b class="' + (haKbw ? 'tak' : 'nie') + '">' + (haKbw ? 'YES' : 'NO') + '</b> – ' + udzialKbw.toFixed(0) + '% of area') + '</div>';
 
-    var znak = function (b) { return b ? '✔' : '–'; };
-    h += '<table class="cdi-tab"><tr><th>Indicator (area)</th><th>Value</th><th>Drought</th></tr>' +
-      '<tr><td>SPI-1 (30 days)</td><td>' + f2(spi1) + '</td><td>' + znak(spi1 < -2) + '</td></tr>' +
-      '<tr><td>SPI-3 (90 days)</td><td>' + f2(spi3) + '</td><td>' + znak(spi3 < -1) + '</td></tr>' +
-      '<tr><td>SMA (soil 0–100 cm)</td><td>' + f2(sma) + '</td><td>' + znak(sma < -1) + '</td></tr>' +
-      '<tr><td>KBW below threshold</td><td>' + udzialKbw.toFixed(0) + '%</td><td>' + znak(udzialKbw >= 50) + '</td></tr>' +
-      '<tr><td>NDDI anomaly (z)</td><td>' + f2(zN) + '</td><td>' + znak(zN > 1) + '</td></tr>' +
-      '<tr><td>NDDI / NDVI (60 days)</td><td>' + f2(nddi) + ' / ' + f2(ndvi) + '</td><td></td></tr></table>';
-
-    h += '<div class="rolnik-sekcja" style="margin-top:8px">Parcels</div><table class="cdi-tab">' +
-      '<tr><th>Parcel</th><th>Soil</th><th>KBW / thr.</th><th>SPI-3</th><th>SMA</th><th>NDDI z</th><th>CDI</th></tr>' +
-      dane.map(function (d) {
-        var w = d.wynik, k = w.kl.kbw, Q = POZIOMY[w.cdi.poziom];
-        return '<tr><td title="' + esc(d.teryt) + '">' + esc(d.numer) + '</td><td>' + d.kategoria + '</td><td>' +
-          (k ? f0(k.wartosc) + ' / ' + (k.prog === null ? 'x' : k.prog) : '–') + '</td><td>' + f2(w.kl.spi3.wartosc) +
-          '</td><td>' + f2(w.kl.sma.wartosc) + '</td><td title="' + esc(w.nddi.powod || '') + '">' + f2(w.nddi.z) +
-          '</td><td><span class="cdi-kropka" style="background:' + Q.kolor + '"></span>' + Q.nazwa + '</td></tr>';
-      }).join('') + '</table>';
-
-    var bezNddi = dane.filter(function (d) { return !isFinite(d.wynik.nddi.z); });
-    h += '<div class="cdi-uwaga">' +
-      (bezNddi.length ? '<b>NDDI anomaly unavailable for ' + bezNddi.length + ' parcel(s): ' +
-        esc(bezNddi[0].wynik.nddi.powod || 'no data') + ' – Alert level cannot be reached.</b><br>' : '') +
-      'CDI: Watch = SPI-3 &lt; −1 or SPI-1 &lt; −2 or KBW below threshold; Warning = Watch and SMA &lt; −1; ' +
-      'Alert = Warning and NDDI anomaly &gt; +1 (EDO scheme, NDDI instead of fAPAR).<br>' +
-      'KBW = precipitation − ET0 (FAO) from ERA5 over the 60-day period; thresholds from Dz.U. 2019 poz. 739. ' +
-      'IUNG computes evapotranspiration with its own formula from IMGW stations – ERA5 KBW tends to be ~10–20 mm lower.<br>' +
-      'Soil category from SoilGrids texture (approximation) – check and change it in the list if needed. ' +
-      'SPI/SMA vs. ' + OD_ROKU + '–' + (+dataD.slice(0, 4) - 1) + '; NDDI anomaly vs. ' + NDDI_OD_ROKU + '–' +
-      (+dataD.slice(0, 4) - 1) + '.</div>';
+    if (dane.length > 1) {
+      h += '<table class="cdi-tab" style="margin-top:6px"><tr><th>Parcel</th><th>Points</th><th>Hazard</th><th>CDI</th></tr>' +
+        dane.map(function (d) {
+          var p = d.wynik.punkty, c = POZIOMY_CDI[d.wynik.cdi];
+          return '<tr><td title="' + esc(d.teryt) + '">' + esc(d.numer) + '</td><td>' + (p && p.wynik !== null ? p.wynik : '–') +
+            '</td><td>' + znaczekKlasy(am, p && p.klasa) + '</td><td><span class="cdi-kropka" style="background:' + c.kolor + '"></span>' +
+            c.nazwa + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    h += '<div class="cdi-uwaga">Values of each parameter: see <b>Detailed data</b>.<br>' +
+      'Hazard = sum of points for NDDI, soil type, porosity, soil temperature and soil water (classes from the ' +
+      'multi-criteria analysis); CDI = SPI, SMA, KBW and NDDI anomaly (EDO scheme).</div>';
     wynik.innerHTML = h;
+  }
+
+  // ------------------------------------------------------------------ „Detailed data”: każdy parametr osobno
+  function sekcja(tytul, opis, kolumny, dane) {
+    var h = '<div class="cdi-sekcja">' + tytul + (opis ? ' <small>' + opis + '</small>' : '') + '</div><table class="cdi-tab"><tr>' +
+      (dane.length > 1 ? '<th>Parcel</th>' : '') + kolumny.map(function (k) { return '<th>' + k[0] + '</th>'; }).join('') + '</tr>';
+    dane.forEach(function (d) {
+      h += '<tr>' + (dane.length > 1 ? '<td title="' + esc(d.teryt) + '">' + esc(d.numer) + '</td>' : '') +
+        kolumny.map(function (k) { return '<td>' + k[1](d) + '</td>'; }).join('') + '</tr>';
+    });
+    if (dane.length > 1) {
+      h += '<tr class="obszar"><td>Area</td>' + kolumny.map(function (k) { return '<td>' + (k[2] ? k[2](dane) : '') + '</td>'; }).join('') + '</tr>';
+    }
+    return h + '</table>';
+  }
+
+  function pokazSzczegoly(dane, uprawa) {
+    var w0 = dane[0].wynik, kl0 = w0.kl, am = analizaMeta();
+    var sr = function (fn, fmt) { return function (ds) { return fmt(srW(ds, fn)); }; };
+    var punktyKr = function (i) {
+      return function (d) {
+        var p = d.wynik.punkty, x = p && p.wiersze[i];
+        return x && x.punkty !== null ? x.punkty + ' pt' : '–';
+      };
+    };
+    var idx = {};
+    if (am) am.kryteria.forEach(function (k, i) { idx[k.warstwa] = i; });
+    var kolPunkty = function (warstwa) { return am && idx[warstwa] !== undefined ? [['Points', punktyKr(idx[warstwa])]] : []; };
+
+    var h = '<div class="cdi-uwaga" style="margin-top:0">' + esc(nazwaUprawy(uprawa)) + ' · data to ' + kl0.data + ' · ' +
+      dane.length + (dane.length === 1 ? ' parcel (' + esc(dane[0].numer) + ', ' + esc(dane[0].obreb) + ')' : ' parcels') + '</div>';
+
+    h += sekcja('Soil type', 'SoilGrids; category per Dz.U. 2019 poz. 739', [
+      ['Type', function (d) { return esc(d.gleba || '–'); }],
+      ['Cat.', function (d) { return d.kategoria; }]
+    ].concat(kolPunkty('gleba_klasa')), dane);
+    h += sekcja('Total porosity', 'SoilGrids', [
+      ['%', function (d) { return f1(d.wynik.porowatosc); }, sr(function (d) { return d.wynik.porowatosc; }, f1)]
+    ].concat(kolPunkty('porowatosc')), dane);
+
+    h += sekcja('Soil temperature', '0–7 cm, ' + DNI_GLEBY + '-day mean (ERA5-Land)', [
+      ['°C', function (d) { return f1(d.wynik.kl.tGleby); }, sr(function (d) { return d.wynik.kl.tGleby; }, f1)]
+    ].concat(kolPunkty('t_gleby_era5')), dane);
+
+    h += sekcja('Soil water', 'ERA5-Land', [
+      ['0–7 cm', function (d) { return f2(d.wynik.kl.wilg7) + ' m³/m³'; }, sr(function (d) { return d.wynik.kl.wilg7; }, function (v) { return f2(v) + ' m³/m³'; })],
+      ['Pores', function (d) { return f0(d.wynik.woda) + ' %'; }, sr(function (d) { return d.wynik.woda; }, function (v) { return f0(v) + ' %'; })]
+    ].concat(kolPunkty('woda_w_porach')), dane);
+    h += sekcja('Soil moisture anomaly (SMA)', '0–100 cm, ' + SMA_DNI + ' days vs ' + OD_ROKU + '–' + (+kl0.data.slice(0, 4) - 1), [
+      ['Now', function (d) { return f2(d.wynik.kl.sma.teraz); }],
+      ['Normal', function (d) { return f2(d.wynik.kl.sma.norma); }],
+      ['SMA', function (d) { return f2(d.wynik.kl.sma.wartosc); }, sr(function (d) { return d.wynik.kl.sma.wartosc; }, f2)]
+    ], dane);
+
+    h += sekcja('Precipitation', 'ERA5, sum vs normal 1991–' + (+kl0.data.slice(0, 4) - 1), [
+      ['30 d', function (d) { return f0(d.wynik.kl.spi1.suma) + '/' + f0(d.wynik.kl.spi1.norma) + ' mm'; }],
+      ['SPI-1', function (d) { return f2(d.wynik.kl.spi1.wartosc); }, sr(function (d) { return d.wynik.kl.spi1.wartosc; }, f2)],
+      ['90 d', function (d) { return f0(d.wynik.kl.spi3.suma) + '/' + f0(d.wynik.kl.spi3.norma) + ' mm'; }],
+      ['SPI-3', function (d) { return f2(d.wynik.kl.spi3.wartosc); }, sr(function (d) { return d.wynik.kl.spi3.wartosc; }, f2)]
+    ], dane);
+
+    var kbw0 = kl0.kbw;
+    h += sekcja('Climatic water balance (KBW)', kbw0 ? etykietaOkresu(OKRESY[kbw0.okres]) + ', Dz.U. 2019 poz. 739' : 'no complete period yet', [
+      ['P', function (d) { return f0(d.wynik.kl.kbw && d.wynik.kl.kbw.opad); }],
+      ['ET0', function (d) { return f0(d.wynik.kl.kbw && d.wynik.kl.kbw.et0); }],
+      ['KBW', function (d) { return f0(d.wynik.kl.kbw && d.wynik.kl.kbw.wartosc); }, sr(function (d) { return d.wynik.kl.kbw ? d.wynik.kl.kbw.wartosc : NaN; }, f0)],
+      ['Thr.', function (d) { var k = d.wynik.kl.kbw; return !k ? '–' : k.prog === null ? 'x' : k.prog; }],
+      ['Drought', function (d) { var k = d.wynik.kl.kbw; return !k || k.prog === null ? '–' : (k.susza ? '<b style="color:#c62828">YES</b>' : 'no'); }]
+    ], dane);
+
+    h += sekcja('Vegetation', 'Sentinel-2, ' + NDDI_DNI + ' days to ' + kl0.data, [
+      ['NDVI', function (d) { return f2(d.wynik.rosl.ndvi); }, sr(function (d) { return d.wynik.rosl.ndvi; }, f2)],
+      ['NDWI', function (d) { return f2(d.wynik.rosl.ndwi); }],
+      ['NDDI', function (d) { return f2(d.wynik.rosl.nddi); }, sr(function (d) { return d.wynik.rosl.nddi; }, f2)],
+      ['Img.', function (d) { return d.wynik.rosl.sceny || 0; }]
+    ].concat(kolPunkty('nddi')), dane);
+    h += sekcja('NDDI anomaly', 'vs same weeks ' + NDDI_OD_ROKU + '–' + (+kl0.data.slice(0, 4) - 1), [
+      ['Normal', function (d) { return f2(d.wynik.rosl.norma); }],
+      ['z', function (d) { return isFinite(d.wynik.rosl.z) ? f2(d.wynik.rosl.z) : '<span title="' + esc(d.wynik.rosl.powod || '') + '">–</span>'; },
+        sr(function (d) { return d.wynik.rosl.z; }, f2)],
+      ['Years', function (d) { return d.wynik.rosl.lat || 0; }]
+    ], dane);
+    var bez = dane.filter(function (d) { return !isFinite(d.wynik.rosl.z); });
+    if (bez.length) h += '<div class="cdi-uwaga">NDDI anomaly not calculated: ' + esc(bez[0].wynik.rosl.powod || 'no data') + '.</div>';
+    h += '<div class="cdi-uwaga">Sources: ERA5 / ERA5-Land (Copernicus) via Open-Meteo; Sentinel-2 L2A via Microsoft Planetary ' +
+      'Computer; soil – SoilGrids (ISRIC); KBW thresholds – Dz.U. 2019 poz. 739. KBW = precipitation − ET0 (FAO); IUNG uses its ' +
+      'own evapotranspiration formula from IMGW stations, so ERA5 KBW is usually ~10–20 mm lower.</div>';
+    szczegoly.innerHTML = h;
   }
 })();
