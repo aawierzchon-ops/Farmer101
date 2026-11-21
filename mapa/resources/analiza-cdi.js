@@ -104,6 +104,13 @@
     '.cdi-skala{position:relative;height:12px;border-radius:3px;margin:2px 0 1px}' +
     '.cdi-skala i{position:absolute;top:-4px;width:4px;height:20px;background:#222;border:1px solid #fff;border-radius:2px;transform:translateX(-50%)}' +
     '.cdi-skala-opis{display:flex;justify-content:space-between;font-size:11px;color:#555;margin-bottom:6px}' +
+    '.cdi-os{margin-top:10px;border-top:1px solid #ddd;padding-top:6px;font-size:12px}' +
+    '.cdi-os select{font-size:12px;width:100%;margin:3px 0}' +
+    '.cdi-os canvas{width:100%;height:120px;display:block;background:#fafafa;border:1px solid #e3e3e3;border-radius:3px}' +
+    '.cdi-os input[type=range]{width:100%;margin:4px 0 2px}' +
+    '.cdi-os-odczyt{font-size:11.5px;margin-top:2px}.cdi-os-odczyt b{font-size:12.5px}' +
+    '.cdi-os-przycisk{width:100%;margin-top:4px;font:600 12px system-ui,sans-serif;padding:4px;border-radius:4px;cursor:pointer;' +
+    'border:1px solid #2e5e2a;background:#fff;color:#2e5e2a}.cdi-os-przycisk:disabled{opacity:.5;cursor:default}' +
     '.cdi-zaznaczanie .ol-viewport{cursor:copy}';
   document.head.appendChild(css);
 
@@ -135,14 +142,15 @@
   // ------------------------------------------------------------------ warstwa zaznaczonych działek
   // po obliczeniu działka ma kolor wg wyniku końcowego: zielony = dobrze … czerwony = źle
   function stylDzialki(f) {
-    var d = f.get('dzialka'), t = ocenaDzialki(d), jest = isFinite(t);
-    var kolor = jest ? kolorSkali(t) : '#1565c0', mozaika = !!(d && d.warstwaPikseli);
+    var d = f.get('dzialka'), czas = d && isFinite(d.wynikCzasu);   // data wybrana na osi czasu
+    var t = czas ? d.wynikCzasu / analizaMeta().maks_punktow : ocenaDzialki(d), jest = isFinite(t);
+    var kolor = jest ? kolorSkali(t) : '#1565c0', mozaika = !czas && !!(d && d.warstwaPikseli);
     return new ol.style.Style({
       stroke: new ol.style.Stroke({ color: mozaika ? 'rgba(0,0,0,0.75)' : kolor, width: mozaika ? 2 : 3 }),
       // z mozaiką pikseli wypełnienie jest przezroczyste – kolory pokazują piksele 10 m
       fill: new ol.style.Fill({ color: mozaika ? 'rgba(0,0,0,0)' : jest ? kolorSkali(t, 0.55) : 'rgba(21,101,192,0.2)' }),
       text: new ol.style.Text({
-        text: d ? d.numer + (jest ? '\n' + d.wynik.punkty.wynik + ' pts' : '') : '',
+        text: d ? d.numer + (jest ? '\n' + (czas ? Math.round(d.wynikCzasu) : d.wynik.punkty.wynik) + ' pts' : '') : '',
         font: 'bold 14px Arial, sans-serif', overflow: true,
         fill: new ol.style.Fill({ color: '#fff' }), stroke: new ol.style.Stroke({ color: 'rgba(0,0,0,0.7)', width: 4 })
       })
@@ -171,7 +179,7 @@
     '<label>Date</label><input type="date" class="cdi-data" max="' + dzis + '" min="' + (NDDI_OD_ROKU + 1) + '-01-01" value="' + dzis + '"></div>' +
     '<ul class="cdi-lista"></ul>' +
     '<button type="button" class="cdi-oblicz" disabled>Calculate</button>' +
-    '<div class="cdi-wynik"></div>';
+    '<div class="cdi-wynik"></div><div class="cdi-os"></div>';
   var $ = function (s) { return tresc.querySelector(s); };
   var przyciskZaznacz = $('.cdi-zaznacz'), lista = $('.cdi-lista'), przyciskOblicz = $('.cdi-oblicz'), wynik = $('.cdi-wynik');
   var poleUprawa = $('.cdi-uprawa'), poleData = $('.cdi-data');
@@ -213,8 +221,12 @@
   }
   function wyczyscWyniki() {
     grupaPikseli.getLayers().clear();
-    stan.dzialki.forEach(function (d) { d.wynik = null; d.warstwaPikseli = null; d.feature.changed(); });
+    grupaPikseli.setVisible(true);
+    stan.dzialki.forEach(function (d) { d.wynik = null; d.warstwaPikseli = null; d.wynikCzasu = NaN; d.feature.changed(); });
     wynik.innerHTML = '';
+    var os = tresc.querySelector('.cdi-os');
+    if (os) os.innerHTML = '';
+    seria = null;
     szczegoly.innerHTML = PUSTE_SZCZEGOLY;
     odswiezListe();
   }
@@ -684,6 +696,225 @@
     grupaPikseli.getLayers().push(d.warstwaPikseli);
   }
 
+  // ------------------------------------------------------------------ oś czasu: 12 miesięcy przed datą analizy, co 10 dni
+  // Dla każdej daty: wskaźniki ERA5 (z pobranej już serii dziennej) i NDDI/NDVI ze wszystkich bezchmurnych scen
+  // Sentinel-2 z 60 dni przed datą; punkty zagrożenia tymi samymi kryteriami co wynik końcowy.
+  var OS_DNI = 365, OS_KROK = 10;
+  var seria = null;
+  var PARAMETRY_OSI = [
+    { id: 'punkty', nazwa: 'Hazard score [pts]', miejsca: 1 },
+    { id: 'nddi', nazwa: 'NDDI (Sentinel-2, 60 days)', miejsca: 2 },
+    { id: 'ndvi', nazwa: 'NDVI (Sentinel-2, 60 days)', miejsca: 2 },
+    { id: 'woda', nazwa: 'Soil water – pore filling [%]', miejsca: 0 },
+    { id: 'tGleby', nazwa: 'Soil temperature 0–7 cm [°C]', miejsca: 1 },
+    { id: 'kbw', nazwa: 'Climatic water balance, 60 days [mm]', miejsca: 0 },
+    { id: 'spi1', nazwa: 'SPI-1 (30 days)', miejsca: 2 },
+    { id: 'spi3', nazwa: 'SPI-3 (90 days)', miejsca: 2 },
+    { id: 'sma', nazwa: 'SMA – soil moisture anomaly', miejsca: 2 }
+  ];
+
+  // wszystkie bezchmurne sceny działki w okresie (NDDI i NDVI w obrysie)
+  function scenyOkresu(d, od, doD, postep) {
+    var klucz = 'seria:' + od + '/' + doD;
+    if (d.nddiCache[klucz]) return d.nddiCache[klucz];
+    d.nddiCache[klucz] = fetch(PC + '/stac/v1/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        collections: ['sentinel-2-l2a'], intersects: d.geojson.geometry,
+        datetime: od + 'T00:00:00Z/' + doD + 'T23:59:59Z', query: { 'eo:cloud_cover': { lt: 60 } },
+        sortby: [{ field: 'datetime', direction: 'asc' }], limit: 400
+      })
+    }).then(function (r) { if (!r.ok) throw new Error('STAC ' + r.status); return r.json(); })
+      .then(function (dane) {
+        var dni = {}, sceny = [];
+        (dane.features || []).forEach(function (s) {
+          var dz = s.properties.datetime.slice(0, 10);
+          if (!dni[dz]) { dni[dz] = 1; sceny.push({ id: s.id, data: dz }); }
+        });
+        var zrobione = 0;
+        return poKolei(sceny, function (s) {
+          return statystykiSceny(s, d.geojson).then(function (w) { if (postep) postep(++zrobione, sceny.length); return w; });
+        }, 4);
+      })
+      .then(function (w) { return w.filter(function (s) { return s && s.czyste >= NDDI_CZYSTE && isFinite(s.nddi); }); });
+    d.nddiCache[klucz].catch(function () { delete d.nddiCache[klucz]; });
+    return d.nddiCache[klucz];
+  }
+
+  function kbw60(k, data) {
+    var i1 = k.idx[data > k.ostatni ? k.ostatni : data], s = 0;
+    if (i1 === undefined || i1 < 59) return NaN;
+    for (var j = i1 - 59; j <= i1; j++) { if (k.p[j] === null || k.et[j] === null) return NaN; s += k.p[j] - k.et[j]; }
+    return s;
+  }
+
+  function policzSerie(dane, uprawa, daty, klucz) {
+    var am = analizaMeta(), uprawaKbw = UPRAWA_KBW[uprawa] || 'Zboża jare';
+    var obszar = {}, dzialki = dane.map(function (d) { return { d: d, wart: {} }; });
+    PARAMETRY_OSI.forEach(function (p) { obszar[p.id] = []; dzialki.forEach(function (x) { x.wart[p.id] = []; }); });
+    daty.forEach(function (t, it) {
+      var od = przesun(t, -NDDI_DNI);
+      dzialki.forEach(function (x) {
+        var d = x.d, k = d.osDane.klimat, kl = wskaznikiKlimatu(k, t, uprawaKbw, d.kategoria);
+        var okno = d.osDane.sceny.filter(function (s) { return s.data > od && s.data <= t; });
+        var nddi = srednia(okno.map(function (s) { return s.nddi; })), ndvi = srednia(okno.map(function (s) { return s.ndvi; }));
+        var por = d.wynik.porowatosc;
+        var woda = isFinite(por) && kl.wilg7 !== null ? Math.min(100, Math.max(0, 100 * kl.wilg7 / (por / 100))) : NaN;
+        var punkty = NaN;
+        if (am) {
+          var p = punktyUprawy(am, uprawa, {
+            nddi: isFinite(nddi) && ndvi >= 0.2 ? { liczba: nddi } : null,
+            gleba_klasa: d.gleba ? { tekst: d.gleba } : null,
+            porowatosc: isFinite(por) ? { liczba: por } : null,
+            t_gleby_era5: kl.tGleby !== null ? { liczba: kl.tGleby } : null,
+            woda_w_porach: isFinite(woda) ? { liczba: woda } : null
+          });
+          if (p.wynik !== null) punkty = p.wynik;
+        }
+        var w = { punkty: punkty, nddi: nddi, ndvi: ndvi, woda: woda, tGleby: kl.tGleby === null ? NaN : kl.tGleby,
+          kbw: kbw60(k, t), spi1: kl.spi1.wartosc, spi3: kl.spi3.wartosc, sma: kl.sma.wartosc };
+        PARAMETRY_OSI.forEach(function (pp) { x.wart[pp.id][it] = w[pp.id]; });
+      });
+      PARAMETRY_OSI.forEach(function (pp) {
+        obszar[pp.id][it] = srW(dzialki.map(function (x) { return x.d; }), function (d) {
+          return dzialki.filter(function (x) { return x.d === d; })[0].wart[pp.id][it];
+        });
+      });
+    });
+    return { klucz: klucz, daty: daty, obszar: obszar, dzialki: dzialki, param: 'punkty' };
+  }
+
+  function przygotujOs(dane, uprawa) {
+    var os = tresc.querySelector('.cdi-os');
+    if (!os) return;
+    grupaPikseli.setVisible(true);
+    dane.forEach(function (d) { d.wynikCzasu = NaN; d.feature.changed(); });
+    var data = dane[0].wynik.kl.data;
+    var klucz = uprawa + '|' + dane.map(function (d) { return d.teryt + ':' + d.kategoria; }).join(',');
+    if (seria && seria.klucz === klucz && data >= seria.daty[0] && data <= seria.daty[seria.daty.length - 1]) {
+      var idx = 0;
+      seria.daty.forEach(function (t, i) { if (t <= data) idx = i; });
+      rysujOs(os, idx, true);
+      return;
+    }
+    seria = null;
+    os.innerHTML = '<div class="rolnik-sekcja">Timeline</div>' +
+      '<div class="cdi-uwaga" style="margin-top:0">How the parameters changed in the 12 months before ' + data +
+      ' (every ' + OS_KROK + ' days). All Sentinel-2 images of the year are analysed – this can take 0.5–2 minutes.</div>' +
+      '<button type="button" class="cdi-os-przycisk">Load timeline</button>';
+    os.querySelector('button').onclick = function () { zaladujOs(dane, uprawa, data, klucz, os); };
+  }
+
+  function zaladujOs(dane, uprawa, data, klucz, os) {
+    var btn = os.querySelector('button');
+    btn.disabled = true;
+    var daty = [];
+    for (var t = przesun(data, -OS_DNI); t < data; t = przesun(t, OS_KROK)) daty.push(t);
+    daty.push(data);
+    var od = przesun(daty[0], -NDDI_DNI), nr = 0;
+    poKolei(dane, function (d) {
+      var ktora = ++nr;
+      return Promise.all([daneKlimatu(d.lon, d.lat), scenyOkresu(d, od, data, function (i, n) {
+        btn.textContent = 'Loading Sentinel-2: parcel ' + ktora + '/' + dane.length + ', image ' + i + '/' + n + '…';
+      })]).then(function (w) { d.osDane = { klimat: w[0], sceny: w[1] }; });
+    }, 1).then(function () {
+      seria = policzSerie(dane, uprawa, daty, klucz);
+      rysujOs(os, daty.length - 1, true);
+    }).catch(function (e) {
+      os.innerHTML = '<div class="rolnik-blad">Timeline failed: ' + esc(e.message) + '</div>';
+    });
+  }
+
+  function rysujOs(os, idx, nowy) {
+    var am = analizaMeta(), S = seria;
+    if (nowy || !os.querySelector('canvas')) {
+      os.innerHTML = '<div class="rolnik-sekcja">Timeline <small>' + S.daty[0] + ' – ' + S.daty[S.daty.length - 1] + '</small></div>' +
+        '<select class="cdi-os-param">' + PARAMETRY_OSI.map(function (p) {
+          return '<option value="' + p.id + '"' + (p.id === S.param ? ' selected' : '') + '>' + p.nazwa + '</option>';
+        }).join('') + '</select><canvas width="520" height="240"></canvas>' +
+        '<input type="range" class="cdi-os-suwak" min="0" max="' + (S.daty.length - 1) + '" step="1" value="' + idx + '">' +
+        '<div class="cdi-os-odczyt"></div>' +
+        '<button type="button" class="cdi-os-przycisk">Analyse this date in detail</button>' +
+        '<div class="cdi-uwaga">Move the slider – the parcels on the map are coloured by the hazard score on that date ' +
+        '(green = good, red = bad). Points are coloured the same way.</div>';
+      os.querySelector('.cdi-os-param').onchange = function () { S.param = this.value; rysujOs(os, +os.querySelector('.cdi-os-suwak').value); };
+      os.querySelector('.cdi-os-suwak').oninput = function () { rysujOs(os, +this.value); };
+      os.querySelector('.cdi-os-przycisk').onclick = function () {
+        poleData.value = S.daty[+os.querySelector('.cdi-os-suwak').value];
+        oblicz();
+      };
+    }
+    os.querySelector('.cdi-os-suwak').value = idx;
+
+    // wykres
+    var c = os.querySelector('canvas'), g = c.getContext('2d'), W = c.width, H = c.height, L = 44, R = 8, T = 10, B = 26;
+    var y = S.obszar[S.param], par = PARAMETRY_OSI.filter(function (p) { return p.id === S.param; })[0];
+    var wart = y.filter(isFinite), lo, hi;
+    if (S.param === 'punkty' && am) { lo = 0; hi = am.maks_punktow; }
+    else {
+      lo = Math.min.apply(null, wart); hi = Math.max.apply(null, wart);
+      if (/spi|sma/.test(S.param)) { lo = Math.min(lo, -2); hi = Math.max(hi, 2); }
+      if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+      var pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    }
+    var X = function (i) { return L + (W - L - R) * i / Math.max(1, S.daty.length - 1); };
+    var Y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
+    g.clearRect(0, 0, W, H);
+    g.font = '18px system-ui, sans-serif';
+    if (S.param === 'punkty' && am) {        // tło: klasy zagrożenia
+      am.klasy.forEach(function (k, i) {
+        g.fillStyle = kolorSkali((k.od + k.do) / 2 / am.maks_punktow, 0.18);
+        g.fillRect(L, Y(Math.min(hi, k.do + 0.5)), W - L - R, Y(Math.max(lo, k.od - 0.5)) - Y(Math.min(hi, k.do + 0.5)));
+      });
+    }
+    g.strokeStyle = '#ccc'; g.lineWidth = 1; g.fillStyle = '#666';
+    [lo, (lo + hi) / 2, hi].forEach(function (v) {
+      g.beginPath(); g.moveTo(L, Y(v)); g.lineTo(W - R, Y(v)); g.stroke();
+      g.fillText(v.toFixed(par.miejsca === 0 || Math.abs(hi - lo) > 20 ? 0 : 1), 2, Y(v) + 6);
+    });
+    if (lo < 0 && hi > 0) { g.strokeStyle = '#888'; g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(W - R, Y(0)); g.stroke(); }
+    // miesiące na osi X
+    g.fillStyle = '#666';
+    var ostX = -99;
+    S.daty.forEach(function (t, i) {
+      if ((i === 0 || t.slice(5, 7) !== S.daty[i - 1].slice(5, 7)) && X(i) - ostX > 30) {
+        g.fillText(RZYM[+t.slice(5, 7)], X(i) - 6, H - 6);
+        ostX = X(i);
+      }
+    });
+    // linia i punkty (kolor punktu = wynik zagrożenia w tej dacie)
+    g.strokeStyle = '#2e5e2a'; g.lineWidth = 2.5; g.beginPath();
+    var start = true;
+    y.forEach(function (v, i) {
+      if (!isFinite(v)) { start = true; return; }
+      if (start) g.moveTo(X(i), Y(v)); else g.lineTo(X(i), Y(v));
+      start = false;
+    });
+    g.stroke();
+    y.forEach(function (v, i) {
+      if (!isFinite(v)) return;
+      var pk = S.obszar.punkty[i];
+      g.fillStyle = isFinite(pk) && am ? kolorSkali(pk / am.maks_punktow) : '#2e5e2a';
+      g.beginPath(); g.arc(X(i), Y(v), i === idx ? 7 : 4.5, 0, 2 * Math.PI); g.fill();
+      if (i === idx) { g.strokeStyle = '#222'; g.lineWidth = 2; g.stroke(); }
+    });
+    g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1.5; g.setLineDash([5, 4]);
+    g.beginPath(); g.moveTo(X(idx), T); g.lineTo(X(idx), H - B); g.stroke(); g.setLineDash([]);
+
+    // odczyt dla wybranej daty
+    var o = function (id) { return S.obszar[id][idx]; }, pk0 = o('punkty');
+    var kl = am && isFinite(pk0) ? klasaZagrozenia(am, Math.round(pk0)) : null;
+    os.querySelector('.cdi-os-odczyt').innerHTML = '<b>' + S.daty[idx] + '</b> · Hazard ' +
+      ocena(f1(pk0) + ' pts', am ? pk0 / am.maks_punktow : NaN) + (kl ? ' ' + esc(am.klasy[kl - 1].nazwa) : '') + '<br>' +
+      'NDDI ' + f2(o('nddi')) + ' · NDVI ' + f2(o('ndvi')) + ' · water ' + f0(o('woda')) + '% · soil ' + f1(o('tGleby')) + ' °C<br>' +
+      'KBW ' + f0(o('kbw')) + ' mm · SPI-1 ' + f2(o('spi1')) + ' · SPI-3 ' + f2(o('spi3')) + ' · SMA ' + f2(o('sma'));
+
+    // mapa: działki w kolorze wyniku z tej daty (mozaika pikseli dotyczy tylko daty analizy)
+    var d0 = S.dzialki[0] && S.dzialki[0].d, naDacieAnalizy = !!(d0 && d0.wynik && d0.wynik.kl.data === S.daty[idx]);
+    S.dzialki.forEach(function (x) { x.d.wynikCzasu = naDacieAnalizy ? NaN : x.wart.punkty[idx]; x.d.feature.changed(); });
+    grupaPikseli.setVisible(naDacieAnalizy);
+  }
+
   // ------------------------------------------------------------------ obliczenia
   function oblicz() {
     var data = poleData.value || dzis, uprawa = poleUprawa.value, uprawaKbw = UPRAWA_KBW[uprawa] || 'Zboża jare';
@@ -799,6 +1030,7 @@
       'Hazard = sum of points (0, 2, 4 or 6) for NDDI, soil type, soil temperature and soil water; classes ' +
       'I 0–4, II 5–13, III 14–20, IV 21–24 (skrypty/analiza_mapa.py). CDI = SPI, SMA, KBW and NDDI anomaly (EDO scheme).</div>';
     wynik.innerHTML = h;
+    przygotujOs(dane, uprawa);
   }
 
   // ------------------------------------------------------------------ „Detailed data”: każdy parametr osobno
