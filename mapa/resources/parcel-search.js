@@ -38,6 +38,12 @@
   });
   map.addLayer(resultLayer);
 
+  // zamknięcie dymka (×) usuwa też obrys i numer działki z mapy
+  var zamykacz = document.getElementById('popup-closer');
+  if (zamykacz) {
+    zamykacz.addEventListener('click', function () { resultLayer.getSource().clear(); });
+  }
+
   // ---------- Zapytania ----------
   function query(base, params) {
     return base + '?' + Object.keys(params).map(function (k) {

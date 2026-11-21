@@ -1,7 +1,7 @@
 /*
- * Panel „Warstwy” w lewym dolnym rogu, wyglądający jak panel „Analiza dla rolnika”
- * (zielony nagłówek, przycisk zwiń/rozwiń). Zastępuje przycisk warstw qgis2web z prawego górnego rogu.
- * Oba panele trafiają do wspólnej kolumny w lewym dolnym rogu: „Warstwy” na górze, „Analiza dla rolnika” pod spodem.
+ * Zwijane panele w lewym dolnym rogu w stylu panelu rolnika (zielony nagłówek, przycisk +/–):
+ * „Warstwy” (zastępuje przycisk warstw qgis2web), „Szczegółowe dane” (rolnik.js), „Uprawy”, „Analiza końcowa”.
+ * Do tego logo w prawym dolnym rogu.
  * Ładowany w index.html po qgis2web.js (korzysta z globalnych `map` i `layerSwitcher`).
  */
 (function () {
@@ -17,34 +17,47 @@
   kolumna.className = 'ol-unselectable panele-lewy-dol';
   map.addControl(new ol.control.Control({ element: kolumna }));
 
-  // panel „Warstwy” w stylu panelu rolnika
-  var panel = document.createElement('div');
-  panel.className = 'rolnik-panel panel-warstw zwiniety';
-  panel.innerHTML =
-    '<div class="rolnik-naglowek"><span>Warstwy</span>' +
-    '<button type="button" class="rolnik-zwin" title="Zwiń / rozwiń">+</button></div>' +
-    '<div class="rolnik-tresc panel-warstw-lista"></div>';
-  kolumna.appendChild(panel);
+  // zwijany panel w stylu panelu rolnika (zielony nagłówek, przycisk +/–), na starcie zwinięty
+  function nowyPanel(tytul, klasaTresci, tresc, poRozwinieciu) {
+    var p = document.createElement('div');
+    p.className = 'rolnik-panel panel-warstw zwiniety';
+    p.innerHTML =
+      '<div class="rolnik-naglowek"><span>' + tytul + '</span>' +
+      '<button type="button" class="rolnik-zwin" title="Zwiń / rozwiń">+</button></div>' +
+      '<div class="rolnik-tresc ' + klasaTresci + '">' + (tresc || '') + '</div>';
+    var b = p.querySelector('.rolnik-zwin');
+    b.onclick = function () {
+      var zwiniety = p.classList.toggle('zwiniety');
+      b.textContent = zwiniety ? '+' : '–';
+      if (!zwiniety && poRozwinieciu) poRozwinieciu();
+    };
+    kolumna.appendChild(p);
+    return p;
+  }
 
+  // „Warstwy” – lista warstw qgis2web
+  var panel = nowyPanel('Warstwy', 'panel-warstw-lista', '', rysuj);
   var lista = panel.querySelector('.panel-warstw-lista');
-  var przycisk = panel.querySelector('.rolnik-zwin');
-
   function rysuj() {
     ol.control.LayerSwitcher.renderPanel(map, lista, { reverse: true, groupSelectStyle: 'children' });
   }
   rysuj();
   map.getLayers().on('change:length', rysuj);
 
-  przycisk.onclick = function () {
-    var zwiniety = panel.classList.toggle('zwiniety');
-    przycisk.textContent = zwiniety ? '+' : '–';
-    if (!zwiniety) rysuj();
-  };
+  // „Uprawy” i „Analiza końcowa” – na razie bez treści
+  var panelUprawy = nowyPanel('Uprawy', 'panel-uprawy', '<div class="panel-pusty">Wkrótce.</div>');
+  nowyPanel('Analiza końcowa', 'panel-analiza-koncowa', '<div class="panel-pusty">Wkrótce.</div>');
 
-  // panel „Analiza dla rolnika” (dodawany później przez rolnik.js) przenosimy pod „Warstwy”
+  // logo w prawym dolnym rogu
+  var logo = document.createElement('div');
+  logo.className = 'logo-mapy';
+  logo.innerHTML = '<img src="images/logo_duze.png" alt="Farmer101">';
+  map.addControl(new ol.control.Control({ element: logo }));
+
+  // panel „Szczegółowe dane” (rolnik.js, dodawany później) wstawiamy pod „Warstwy”, przed „Uprawy”
   function przeniesRolnika() {
     var r = document.querySelector('.rolnik-panel.rolnik-ol');
-    if (r && r.parentNode !== kolumna) kolumna.appendChild(r);
+    if (r && r.parentNode !== kolumna) kolumna.insertBefore(r, panelUprawy);
     return !!r;
   }
   if (!przeniesRolnika()) {

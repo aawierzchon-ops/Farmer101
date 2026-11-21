@@ -236,8 +236,8 @@
   function zbudujPanel(A) {
     var div = document.createElement('div');
     div.className = 'rolnik-panel';
-    var html = '<div class="rolnik-naglowek"><span>Analiza dla rolnika</span>' +
-      '<button type="button" class="rolnik-zwin" title="Zwiń / rozwiń">–</button></div>' +
+    var html = '<div class="rolnik-naglowek"><span>Szczegółowe dane</span>' +
+      '<button type="button" class="rolnik-zwin" title="Zwiń / rozwiń">+</button></div>' +
       '<div class="rolnik-tresc"><label class="rolnik-opcja"><input type="radio" name="rolnik-w" value="" checked> brak warstwy</label>';
     var grupy = {};
     meta.warstwy.forEach(function (w) {
@@ -259,7 +259,7 @@
       'gleba – SoilGrids/ISRIC</div></div>';
     div.innerHTML = html;
     var zwin = div.querySelector('.rolnik-zwin');
-    if (window.innerWidth < 700) { div.classList.add('zwiniety'); zwin.textContent = '+'; }
+    div.classList.add('zwiniety');   // na starcie zwinięty, jak pozostałe panele
     zwin.onclick = function () { zwin.textContent = div.classList.toggle('zwiniety') ? '+' : '–'; };
     var suwak = div.querySelector('.rolnik-przezr input');
     div.querySelectorAll('input[name=rolnik-w]').forEach(function (r) {

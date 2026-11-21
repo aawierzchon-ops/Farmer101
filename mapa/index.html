@@ -86,7 +86,7 @@
         }
         </style>
         <style>
-        /* Panel "Warstwy" (resources/panel-warstw.js) - wyglad jak panel "Analiza dla rolnika" */
+        /* Panel "Warstwy" (resources/panel-warstw.js) - wyglad jak panel "Szczegolowe dane" */
         .panele-lewy-dol { position: absolute; left: 8px; bottom: 34px; z-index: 5; display: flex; flex-direction: column;
           align-items: flex-start; gap: 8px; max-height: calc(100% - 110px); pointer-events: none; }
         .panele-lewy-dol > * { pointer-events: auto; }
@@ -110,8 +110,16 @@
         .panel-warstw-lista img { max-width: 22px; max-height: 22px; vertical-align: middle; }
         .panel-warstw-lista .layer-switcher-fold > button, .panel-warstw-lista .group > button { display: none; }
         @media (max-width: 600px) { .panele-lewy-dol .rolnik-panel { width: min(270px, calc(100vw - 70px)); } }
+        /* logo w prawym dolnym rogu (resources/panel-warstw.js) */
+        .logo-mapy { position: absolute; right: 10px; bottom: 26px; z-index: 4; width: 150px; pointer-events: none; }
+        .logo-mapy img { width: 100%; height: auto; display: block; filter: drop-shadow(0 1px 3px rgba(0,0,0,.35)); }
+        @media (max-width: 600px) { .logo-mapy { width: 90px; } }
+        .panel-pusty { color: #666; font-size: 12px; padding: 2px 0; }
         </style>
-        <title></title>
+        <title>Farmer101</title>
+        <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+        <link rel="icon" href="favicon.ico" sizes="any">
+        <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     </head>
     <body>
         <div id="map">
