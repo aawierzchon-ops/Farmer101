@@ -20,7 +20,7 @@ the agricultural drought hazard of their parcels for spring wheat, winter wheat,
   anywhere in Poland, down to single cadastral parcels.
 - **In scope for the weekend:**
   - a web map on GitHub Pages, rebuilt every day by a GitHub Actions workflow;
-  - map layers from Landsat 8/9, ERA5-Land and SoilGrids;
+  - map layers from Landsat 8, ERA5-Land and SoilGrids;
   - multi-criteria drought hazard maps for the four crops;
   - parcel analysis: hazard score and class, Combined Drought Indicator (CDI), a 10 m Sentinel-2 map inside each parcel
     and a 12-month timeline.
