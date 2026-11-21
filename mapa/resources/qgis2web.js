@@ -112,12 +112,6 @@ map.addOverlay(overlayPopup)
 var NO_POPUP = 0
 var ALL_FIELDS = 1
 
-/**
- * Returns either NO_POPUP, ALL_FIELDS or the name of a single field to use for
- * a given layer
- * @param layerList {Array} List of ol.Layer instances
- * @param layer {ol.Layer} Layer to find field info about
- */
 function getPopupFields(layerList, layer) {
     // Determine the index that the layer will have in the popupLayers Array,
     // if the layersList contains more items than popupLayers then we need to
@@ -224,7 +218,7 @@ function onPointerMove(evt) {
         }
     });
 
-    // Iterate over the features and layers in reverse order
+
     for (var i = featuresAndLayers.length - 1; i >= 0; i--) {
         var feature = featuresAndLayers[i].feature;
         var layer = featuresAndLayers[i].layer;
@@ -643,51 +637,23 @@ let measuring = false;
     measureControl.appendChild(selectLabel);
 
     selectLabel.style.display = "none";
-	/**
-	 * Currently drawn feature.
-	 * @type {ol.Feature}
-	 */
 
-	/**
-	 * The help tooltip element.
-	 * @type {Element}
-	 */
 	var helpTooltipElement;
 
 
-	/**
-	 * Overlay to show the help messages.
-	 * @type {ol.Overlay}
-	 */
+
 	var helpTooltip;
 
-
-	/**
-	 * The measure tooltip element.
-	 * @type {Element}
-	 */
 	var measureTooltipElement;
 
 
-	/**
-	 * Overlay to show the measurement.
-	 * @type {ol.Overlay}
-	 */
 	var measureTooltip;
 
 
-	/**
-	 * Message to show when the user is drawing a line.
-	 * @type {string}
-	 */
 	var continueLineMsg = 'Click to continue drawing the line';
 
 
 
-	/**
-	 * Message to show when the user is drawing a polygon.
-	 * @type {string}
-	 */
 	var continuePolygonMsg = "1click continue, 2click close";
 
 
@@ -838,9 +804,6 @@ let measuring = false;
 	}
 
 
-	/**
-	 * Creates a new help tooltip
-	 */
 	function createHelpTooltip() {
 	  if (helpTooltipElement) {
 		helpTooltipElement.parentNode.removeChild(helpTooltipElement);
@@ -856,9 +819,7 @@ let measuring = false;
 	}
 
 
-	/**
-	 * Creates a new measure tooltip
-	 */
+
 	function createMeasureTooltip() {
 	  if (measureTooltipElement) {
 		measureTooltipElement.parentNode.removeChild(measureTooltipElement);
@@ -874,11 +835,7 @@ let measuring = false;
 	}
 
 
-  /**
-  * format length output
-  * @param {ol.geom.LineString} line
-  * @return {string}
-  */
+
   var formatLength = function(line) {
     var length;
     var coordinates = line.getCoordinates();
@@ -900,11 +857,6 @@ let measuring = false;
     return output;
   };
 
-  /**
-  * Format area output.
-  * @param {ol.geom.Polygon} polygon The polygon.
-  * @return {string} Formatted area.
-  */
 	var formatArea = function (polygon) {
 		var sourceProj = map.getView().getProjection();
 		var geom = polygon.clone().transform(sourceProj, 'EPSG:3857');
@@ -927,7 +879,7 @@ let measuring = false;
   }
 
 
-//geocoder
+
 
   //Layer to represent the point of the geocoded address
   var geocoderLayer = new ol.layer.Vector({
@@ -961,7 +913,6 @@ let measuring = false;
       }
   }
 
-  // Function to handle the selected address
   function onSelected(feature) {
       obj.label = feature;
       input.value = typeof obj.label.properties.label === "undefined"? obj.label.properties.display_name : obj.label.properties.label;
@@ -991,7 +942,7 @@ let measuring = false;
       map.getView().setZoom(18);
   }
 
-  // Format the result in the autocomplete search bar
+
   var formatResult = function (feature, el) {
       var title = document.createElement("strong");
       el.appendChild(title);
@@ -1000,10 +951,10 @@ let measuring = false;
       var details = [];
       title.innerHTML = feature.properties.label || feature.properties.display_name;
       var types = {
-      housenumber: "numéro",
-      street: "rue",
-      locality: "lieu-dit",
-      municipality: "commune",
+      housenumber: "number",
+      street: "street",
+      locality: "location",
+      municipality: "City",
       };
       if (
       feature.properties.city &&
@@ -1017,7 +968,6 @@ let measuring = false;
       detailsContainer.innerHTML = details.join(", ");
   };
 
-  // Define a class to create the control button for the search bar in a div tag
   class AddDomControl extends ol.control.Control {
       constructor(elementToAdd, opt_options) {
       const options = opt_options || {};
@@ -1054,17 +1004,10 @@ let measuring = false;
     //url: API_URL + "/search/?",
     url: url["Nominatim OSM"],
     position: "topright",
-    // ,includePosition: function() {
-    //   return ol.proj.transform(
-    //     map.getView().getCenter(),
-    //     map.getView().getProjection(), //'EPSG:3857',
-    //     'EPSG:4326'
-    //   );
-    // }
+
   });
 
-  // Add the created DOM element within the map
-  //var left = document.getElementById("top-left-container");
+
   var controlGeocoder = new AddDomControl(containers, {
     className: "photon-geocoder-autocomplete ol-unselectable ol-control",
   });
@@ -1090,17 +1033,7 @@ let measuring = false;
       }
   });
   input = document.getElementsByClassName("photon-input")[0];
-  //var searchbar = document.getElementsByClassName("photon-geocoder-autocomplete ol-unselectable ol-control")[0]
-  //left.appendChild(searchbar);
-        
 
-//layer search
-
-
-//scalebar
-
-
-//layerswitcher
 
 var layerSwitcher = new ol.control.LayerSwitcher({
     tipLabel: "Layers",
@@ -1138,7 +1071,7 @@ map.once('rendercomplete', function() {
 });
 
 
-// Disable "popup on hover" or "highlight on hover" if ol-control mouseover
+
 var preDoHover = doHover;
 var preDoHighlight = doHighlight;
 var isPopupAllActive = false;
@@ -1160,8 +1093,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
-//move controls inside containers, in order
-    //zoom
+
     var zoomControl = document.getElementsByClassName('ol-zoom')[0];
     if (zoomControl) {
         topLeftContainerDiv.appendChild(zoomControl);
