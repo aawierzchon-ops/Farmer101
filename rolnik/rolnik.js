@@ -252,11 +252,11 @@
           (w.pokrycie === 0 ? ' disabled' : '') + '> ' + w.nazwa + (w.pokrycie === 0 ? ' <i>(brak danych)</i>' : '') + '</label>';
       });
     });
-    html += '<div class="rolnik-przezr">Przezroczystość <input type="range" min="0.2" max="1" step="0.05" value="0.75"></div>' +
+    html += '<div class="rolnik-przezr">Transparency <input type="range" min="0.2" max="1" step="0.05" value="0.75"></div>' +
       '<div class="rolnik-legenda"></div>' +
       '<div class="rolnik-stopka">Kliknij w dowolne miejsce mapy, aby zobaczyć dane dla punktu.<br>' +
       'Dane: Landsat – USGS · ERA5-Land – Copernicus/ECMWF przez <a href="https://open-meteo.com" target="_blank">Open-Meteo</a> · ' +
-      'gleba – SoilGrids/ISRIC</div></div>';
+      'Soil – SoilGrids/ISRIC</div></div>';
     div.innerHTML = html;
     var zwin = div.querySelector('.rolnik-zwin');
     div.classList.add('zwiniety');   // na starcie zwinięty, jak pozostałe panele

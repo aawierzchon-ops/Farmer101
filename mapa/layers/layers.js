@@ -25,13 +25,13 @@ var wms_layers = [];
 var group_Podkady = new ol.layer.Group({
                                 layers: [lyr_OpenTopoMap_0,lyr_ESRISatellite_1,],
                                 fold: 'open',
-                                title: 'Podkłady'});
+                                title: 'Base map'});
 
 lyr_OpenTopoMap_0.setVisible(true);lyr_ESRISatellite_1.setVisible(true);
 
         // Działki ewidencyjne – Krajowa Integracja Ewidencji Gruntów (GUGiK)
         var lyr_KIEG_dzialki = new ol.layer.Image({
-            'title': 'Działki ewidencyjne (KIEG)',
+            'title': 'Cadastral parcels (KIEG)',
             'opacity': 1.000000,
             minZoom: 15,
             source: new ol.source.ImageWMS({
@@ -50,6 +50,6 @@ lyr_OpenTopoMap_0.setVisible(true);lyr_ESRISatellite_1.setVisible(true);
 var group_Dane = new ol.layer.Group({
                                 layers: [lyr_KIEG_dzialki,],
                                 fold: 'open',
-                                title: 'Dane'});
+                                title: 'Data'});
 lyr_KIEG_dzialki.setVisible(true);
 var layersList = [group_Podkady,group_Dane];
