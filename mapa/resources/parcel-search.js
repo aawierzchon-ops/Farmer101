@@ -214,8 +214,12 @@
 
   // Kliknięcie na mapie – identyfikacja działki w tym miejscu
   var clickId = 0;
+  // dla panelu „Final analysis” (resources/analiza-cdi.js)
+  window.mapParcels = { parcelAt: parcelAt };
+
   map.on('singleclick', function (evt) {
     if (typeof measuring !== 'undefined' && measuring) { return; }
+    if (window.analizaCDI && window.analizaCDI.zaznaczanie) { return; }   // zaznaczanie działek do analizy
     var id = ++clickId;
     var coord = evt.coordinate;
     var ll = ol.proj.toLonLat(coord, map.getView().getProjection());

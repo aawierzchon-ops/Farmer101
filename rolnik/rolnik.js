@@ -149,6 +149,7 @@
           // nie przeszkadzamy narzędziu pomiaru qgis2web
           try { if (typeof measuring !== 'undefined' && measuring) return; } catch (e) { /* brak */ }
           try { if (typeof sketch !== 'undefined' && sketch) return; } catch (e) { /* brak */ }
+          if (window.analizaCDI && window.analizaCDI.zaznaczanie) return;   // zaznaczanie działek (Final analysis)
           var proj = rzutMapy();
           var ll = ol.proj.toLonLat(evt.coordinate, proj);
           var m = ol.proj.transform(evt.coordinate, proj, 'EPSG:3857');
