@@ -236,8 +236,8 @@
   function zbudujPanel(A) {
     var div = document.createElement('div');
     div.className = 'rolnik-panel';
-    var html = '<div class="rolnik-naglowek"><span>Szczegółowe dane</span>' +
-      '<button type="button" class="rolnik-zwin" title="Zwiń / rozwiń">+</button></div>' +
+    var html = '<div class="rolnik-naglowek"><span>Detailed data</span>' +
+      '<button type="button" class="rolnik-zwin" title="Collapse / expand">+</button></div>' +
       '<div class="rolnik-tresc"><label class="rolnik-opcja"><input type="radio" name="rolnik-w" value="" checked> brak warstwy</label>';
     var grupy = {};
     meta.warstwy.forEach(function (w) {

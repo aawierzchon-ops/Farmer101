@@ -23,7 +23,7 @@
     p.className = 'rolnik-panel panel-warstw zwiniety';
     p.innerHTML =
       '<div class="rolnik-naglowek"><span>' + tytul + '</span>' +
-      '<button type="button" class="rolnik-zwin" title="Zwiń / rozwiń">+</button></div>' +
+      '<button type="button" class="rolnik-zwin" title="Collapse / expand">+</button></div>' +
       '<div class="rolnik-tresc ' + klasaTresci + '">' + (tresc || '') + '</div>';
     var b = p.querySelector('.rolnik-zwin');
     b.onclick = function () {
@@ -36,7 +36,7 @@
   }
 
   // „Warstwy” – lista warstw qgis2web
-  var panel = nowyPanel('Warstwy', 'panel-warstw-lista', '', rysuj);
+  var panel = nowyPanel('Layers', 'panel-warstw-lista', '', rysuj);
   var lista = panel.querySelector('.panel-warstw-lista');
   function rysuj() {
     ol.control.LayerSwitcher.renderPanel(map, lista, { reverse: true, groupSelectStyle: 'children' });
@@ -45,8 +45,8 @@
   map.getLayers().on('change:length', rysuj);
 
   // „Uprawy” i „Analiza końcowa” – na razie bez treści
-  var panelUprawy = nowyPanel('Uprawy', 'panel-uprawy', '<div class="panel-pusty">Wkrótce.</div>');
-  nowyPanel('Analiza końcowa', 'panel-analiza-koncowa', '<div class="panel-pusty">Wkrótce.</div>');
+  var panelUprawy = nowyPanel('Crops', 'panel-uprawy', '<div class="panel-pusty">Coming soon.</div>');
+  nowyPanel('Final analysis', 'panel-analiza-koncowa', '<div class="panel-pusty">Coming soon.</div>');
 
   // logo w prawym dolnym rogu
   var logo = document.createElement('div');
