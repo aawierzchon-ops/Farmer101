@@ -157,7 +157,7 @@ def main():
     nni = nni_z_evi(kompozyt["evi"], ndvi)
 
     zakres = f"images from {od.isoformat()} – {dzis.isoformat()}, scene cloud cover < {a.chmury:g}%"
-    W, G = a.wyjscie, "Landsat 8/9"
+    W, G = a.wyjscie, "Landsat"
 
     POLSA = "Scale after the Polish Space Agency (POLSA)."
     warstwy = [
