@@ -1,10 +1,5 @@
-/*
- * Dodatek „Rolnik” do mapy wyeksportowanej z qgis2web (OpenLayers lub Leaflet).
- *  - panel z warstwami analitycznymi (ERA5-Land, gleba) + legenda,
- *  - kliknięcie w dowolny punkt: gleba (z warstw) + aktualna temperatura i opady z Open-Meteo,
- *  - zakładka „Final analysis”: analiza wielokryterialna zagrożenia dla upraw (skrypty/analiza_mapa.py).
- * Warstwy to 8-bitowe PNG w EPSG:3857 opisane w dane/meta.json (tworzą je skrypty w skrypty/).
- */
+
+
 (function () {
   'use strict';
 
@@ -13,10 +8,7 @@
   var DANE = BAZA + 'dane/';
   var STREFA = 'Europe/Warsaw';
   var R = 6378137;
-  // Dane wbudowane w index.html (window.ROLNIK_DANE = {meta: {...}, png: {id: 'data:image/png;base64,...'}})
-  // - wtedy nie trzeba folderu rolnik/dane ani serwera; inaczej czytamy pliki z DANE.
   var WBUDOWANE = window.ROLNIK_DANE || null;
-
 
   var PALETY = {
     ndvi: ['#8c510a', '#d8b365', '#f6e8c3', '#c7e9a0', '#7fc97f', '#1a9641', '#00441b'],
@@ -29,10 +21,8 @@
     szara: ['#000000', '#ffffff'],
     kategorie_gleba: ['#fff7bc', '#fee391', '#fec44f', '#c2a45a', '#d9c7a0', '#e8dccb',
       '#d6604d', '#b2654a', '#a6761d', '#e7298a', '#9e6ab8', '#6a3d9a'],
-    zagrozenie: ['#1a9641', '#ffd92f', '#f46d43', '#b2182b']     // klasy zagrożenia I–IV (analiza końcowa)
+    zagrozenie: ['#1a9641', '#ffd92f', '#f46d43', '#b2182b']
   };
-
-  // ================================================================== narzędzia
 
   function hex(c) { return [parseInt(c.substr(1, 2), 16), parseInt(c.substr(3, 2), 16), parseInt(c.substr(5, 2), 16)]; }
 
@@ -63,8 +53,6 @@
   function doMerkatora(lon, lat) {
     return [lon * Math.PI / 180 * R, Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) * R];
   }
-
-  // ================================================================== dane rastrowe
 
   var meta = null, warstwy = {};
 
@@ -104,7 +92,7 @@
     return st.url;
   }
 
-  function wartoscW(st, x, y) {      // x, y w EPSG:3857
+  function wartoscW(st, x, y) {
     var s = meta.siatka;
     var kol = Math.floor((x - s.xmin) / s.piksel_m), wiersz = Math.floor((s.ymax - y) / s.piksel_m);
     if (kol < 0 || wiersz < 0 || kol >= st.szer || wiersz >= st.wys) return null;
@@ -115,9 +103,6 @@
     return { liczba: w.min + (q - 1) / 254 * (w.max - w.min) };
   }
 
-  // ================================================================== adaptery map
-
-  // OpenLayers (qgis2web: resources/qgis2web.js tworzy globalną zmienną `map`)
   function adapterOL(map) {
     var warstwaObrazu = null, nakladkaPopup = null, elPopup = null, elTresc = null;
     var s = meta.siatka;
@@ -132,7 +117,6 @@
       pokazObraz: function (url, przezr) {
         var zrodlo = new ol.source.ImageStatic({ url: url, imageExtent: zasieg, projection: 'EPSG:3857', interpolate: false });
         if (!warstwaObrazu) {
-          // własność 'title' nieustawiona -> warstwa nie pojawia się w przełączniku warstw qgis2web
           warstwaObrazu = new ol.layer.Image({ source: zrodlo, opacity: przezr, zIndex: 50 });
           warstwaObrazu.set('interactive', false);
           map.addLayer(warstwaObrazu);
@@ -146,26 +130,22 @@
       ustawPrzezroczystosc: function (p) { if (warstwaObrazu) warstwaObrazu.setOpacity(p); },
       naKlikniecie: function (fn) {
         map.on('singleclick', function (evt) {
-          // nie przeszkadzamy narzędziu pomiaru qgis2web
-          try { if (typeof measuring !== 'undefined' && measuring) return; } catch (e) { /* brak */ }
-          try { if (typeof sketch !== 'undefined' && sketch) return; } catch (e) { /* brak */ }
-          if (window.analizaCDI && window.analizaCDI.zaznaczanie) return;   // zaznaczanie działek (Final analysis)
+          try { if (typeof measuring !== 'undefined' && measuring) return; } catch (e) {  }
+          try { if (typeof sketch !== 'undefined' && sketch) return; } catch (e) {  }
+          if (window.analizaCDI && window.analizaCDI.zaznaczanie) return;
           var proj = rzutMapy();
           var ll = ol.proj.toLonLat(evt.coordinate, proj);
           var m = ol.proj.transform(evt.coordinate, proj, 'EPSG:3857');
-          // czy pod kursorem jest obiekt z warstwy mapy (wtedy swoje okienko otworzy też qgis2web)
           var obiekt = false;
           try {
             obiekt = map.hasFeatureAtPixel(evt.pixel, {
               layerFilter: function (l) { return l.get('interactive') !== false; }
             });
-          } catch (e) { /* brak */ }
+          } catch (e) {  }
           fn({ lat: ll[1], lng: ll[0], x: m[0], y: m[1], kotwica: evt.coordinate, obiekt: obiekt });
         });
       },
       otworzPopup: function (pkt, html) {
-        // Mapa z wyszukiwarką działek (resources/parcel-search.js): jeden wspólny dymek –
-        // dane rolnika dopisywane pod informacją o działce zamiast osobnego okienka.
         if (window.mapPopup && typeof window.mapPopup.setExtra === 'function') {
           var wspolny = function (h) { window.mapPopup.setExtra('<div class="rolnik-w-dymku">' + h + '</div>'); };
           wspolny(html);
@@ -183,7 +163,6 @@
             e.preventDefault(); nakladkaPopup.setPosition(undefined);
           };
         }
-        // nad obiektem z mapy okienko qgis2web pokazuje się NAD punktem - nasze dajemy wtedy POD punktem
         var pod = !!pkt.obiekt;
         elPopup.classList.toggle('pod', pod);
         nakladkaPopup.setPositioning(pod ? 'top-center' : 'bottom-center');
@@ -193,14 +172,13 @@
         return {
           ustaw: function (h) {
             elTresc.innerHTML = h;
-            nakladkaPopup.setPosition(undefined); nakladkaPopup.setPosition(pkt.kotwica); // ponowne dopasowanie widoku
+            nakladkaPopup.setPosition(undefined); nakladkaPopup.setPosition(pkt.kotwica);
           }
         };
       }
     };
   }
 
-  // Leaflet (qgis2web: `var map = L.map(...)` w index.html)
   function adapterLeaflet(map) {
     var nakladka = null;
     var PUSTY = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
@@ -234,8 +212,6 @@
     };
   }
 
-  // ================================================================== panel
-
   function zbudujPanel(A) {
     var div = document.createElement('div');
     div.className = 'rolnik-panel';
@@ -263,17 +239,16 @@
     div.innerHTML = html;
     panelDane = div;
     var zwin = div.querySelector('.rolnik-zwin');
-    div.classList.add('zwiniety');   // na starcie zwinięty, jak pozostałe panele
+    div.classList.add('zwiniety');
     zwin.onclick = function () { zwin.textContent = div.classList.toggle('zwiniety') ? '+' : '–'; };
     var suwak = div.querySelector('.rolnik-przezr input');
-    // kliknięcie wybranej już warstwy odznacza ją (mapa bez warstwy analitycznej)
     div.querySelectorAll('input[name=rolnik-w]').forEach(function (r) {
       r.onclick = function () {
         if (aktywna === r.value) {
           r.checked = false;
           pokazWarstwe(A, '', div, +suwak.value);
         } else {
-          odznaczAnalize();               // mapa pokazuje jedną warstwę naraz
+          odznaczAnalize();
           pokazWarstwe(A, r.value, div, +suwak.value);
         }
       };
@@ -288,7 +263,6 @@
     var leg = div.querySelector('.rolnik-legenda');
     if (!id) { A.ukryjObraz(); leg.innerHTML = ''; return; }
     var w = meta.warstwy.filter(function (x) { return x.id === id; })[0];
-    // warstwa z osią czasu (opady dzienne) - suwak okresu; gdy brak archiwum, zwykła warstwa
     if (w.czas && !WBUDOWANE) { pokazOkres(A, w, div); return; }
     pokazStala(A, w, div, przezr);
   }
@@ -297,16 +271,11 @@
     var id = w.id, leg = div.querySelector('.rolnik-legenda');
     leg.innerHTML = '<i>Loading…</i>';
     wczytajWarstwe(w).then(function (st) {
-      if (aktywna !== id) return;          // użytkownik zdążył wybrać inną warstwę
+      if (aktywna !== id) return;
       A.pokazObraz(obrazKolorowy(st), przezr);
       leg.innerHTML = (uwaga ? '<div class="rolnik-blad">' + uwaga + '</div>' : '') + legenda(w);
     }).catch(function (e) { leg.innerHTML = '<span class="rolnik-blad">' + e.message + '</span>'; });
   }
-
-  // ================================================================== oś czasu: opady dzienne
-  // Archiwum (skrypty/era5_mapa.py -> dane/opady_dzienne.json): dzienne opady ERA5 na siatce 0,25°,
-  // uint16 w dziesiątych częściach mm (base64). W przeglądarce sumujemy wybrany okres, interpolujemy
-  // dwuliniowo na siatkę mapy (EPSG:3857) i kolorujemy.
 
   var archiwa = {};
   function wczytajArchiwum(w) {
@@ -317,7 +286,7 @@
         var bin = atob(a.dane), n = bin.length >> 1, v = new Uint16Array(n), i;
         for (i = 0; i < n; i++) v[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
         a.v = v; a.n = a.nx * a.ny; delete a.dane;
-        a.srednie = a.dni.map(function (_, d) {     // średni opad dzienny w kadrze (do wykresu)
+        a.srednie = a.dni.map(function (_, d) {
           var s = 0, ile = 0, off = d * a.n;
           for (var k = 0; k < a.n; k++) { var x = v[off + k]; if (x !== a.brak) { s += x; ile++; } }
           return ile ? s * a.skala / ile : 0;
@@ -366,7 +335,7 @@
         var k = j0 * nx + i0;
         var v = (suma[k] * (1 - fx) + suma[k + 1] * fx) * (1 - fy) + (suma[k + nx] * (1 - fx) + suma[k + nx + 1] * fx) * fy;
         var o = (r * W + c) * 4;
-        if (v !== v) { d[o + 3] = 0; continue; }       // NaN - brak danych
+        if (v !== v) { d[o + 3] = 0; continue; }
         var q = (1 + Math.round(Math.min(Math.max(v / vmax, 0), 1) * 254)) * 4;
         d[o] = lut[q]; d[o + 1] = lut[q + 1]; d[o + 2] = lut[q + 2]; d[o + 3] = 255;
       }
@@ -442,7 +411,6 @@
         };
       });
 
-      // zaznaczanie przedziału przeciągnięciem po wykresie
       var kotwica = null;
       function dzienZ(e) {
         var b = wyk.getBoundingClientRect();
@@ -450,7 +418,7 @@
       }
       wyk.addEventListener('pointerdown', function (e) {
         kotwica = dzienZ(e); i0 = i1 = kotwica;
-        try { wyk.setPointerCapture(e.pointerId); } catch (x) { /* brak */ }
+        try { wyk.setPointerCapture(e.pointerId); } catch (x) {  }
         rysuj(); e.preventDefault();
       });
       wyk.addEventListener('pointermove', function (e) {
@@ -484,9 +452,6 @@
     if (w.data) h += '<div class="rolnik-data">' + w.data + '</div>';
     return h;
   }
-
-  // ================================================================== okienko po kliknięciu
-  // Pokazuje tylko: glebę (z warstw mapy) oraz aktualną temperaturę i opady (Open-Meteo, na żywo).
 
   function pobierz(url) {
     return fetch(url).then(function (r) {
@@ -539,7 +504,6 @@
       wiersz('gestosc', 'Bulk density') + '</table>';
   }
 
-  // klasy uziarnienia USDA – angielskie nazwy do dymka (w danych są po polsku)
   var KLASY_EN = { 'piasek': 'sand', 'piasek gliniasty': 'loamy sand', 'glina piaszczysta': 'sandy loam', 'glina': 'loam',
     'pył gliniasty': 'silt loam', 'pył': 'silt', 'glina piaszczysto-ilasta': 'sandy clay loam', 'glina ilasta': 'clay loam',
     'glina pylasto-ilasta': 'silty clay loam', 'ił piaszczysty': 'sandy clay', 'ił pylasty': 'silty clay', 'ił': 'clay' };
@@ -547,7 +511,7 @@
   var WARSTWY_GLEBY = ['gleba_klasa', 'porowatosc', 'piasek', 'il', 'gestosc'];
 
   function poKliknieciu(A, pkt) {
-    analizaPunktu(pkt);                    // zakładka „Final analysis”
+    analizaPunktu(pkt);
     var okno = A.otworzPopup(pkt, '<div class="rolnik-okno"><i>Loading data…</i></div>');
     var wart = {};
     var czesc1 = '', czesc2 = '<div class="rolnik-sekcja">Weather now</div><i>Loading…</i>';
@@ -562,11 +526,6 @@
       .catch(function (err) { czesc2 = '<div class="rolnik-blad">Could not load the weather: ' + err.message + '</div>'; odswiez(); });
   }
 
-  // ================================================================== analiza końcowa („Final analysis”)
-  // Warstwy i progi tworzy skrypty/analiza_mapa.py (meta.zrodla.analiza). Zakładka: wybór uprawy -> mapa klas
-  // zagrożenia; kliknięcie w mapę -> suma punktów dla wszystkich upraw i rozbicie na kryteria dla wybranej.
-  // Punkty w punkcie liczone są tymi samymi progami co w skrypcie, z tych samych warstw PNG.
-
   var panelDane = null, panelAnaliza = null, uprawaAnalizy = '', punktAnalizy = null;
   var RZYMSKIE = ['I', 'II', 'III', 'IV', 'V', 'VI'];
   var PODPOWIEDZ = 'Select a crop and click anywhere on the map to see the points for each criterion.';
@@ -576,10 +535,8 @@
   function uprawaPoId(am, id) { return am.uprawy.filter(function (u) { return u.id === id; })[0]; }
 
   function zbudujAnalize(A) {
-    // mapy zagrożenia trafiają do zakładki „Layers” (resources/panel-warstw.js); „Final analysis” liczy
-    // teraz wynik dla zaznaczonych działek (resources/analiza-cdi.js)
     var cel = document.querySelector('.panel-mapy-zagrozenia');
-    if (!cel) {                                                  // mapa bez tego pliku - własny panel
+    if (!cel) {
       var p = document.createElement('div');
       p.className = 'rolnik-panel rolnik-panel-analiza zwiniety';
       p.innerHTML = '<div class="rolnik-naglowek"><span>Final analysis</span>' +
@@ -601,7 +558,7 @@
     html += '<div class="rolnik-przezr">Transparency <input type="range" min="0.2" max="1" step="0.05" value="0.75"></div>' +
       '<div class="rolnik-legenda"></div><div class="rolnik-analiza-opis"></div>';
     cel.innerHTML = html;
-    var w0 = warstwaPoId(am.uprawy[0].warstwa) || {};      // opis metody i dat danych - na dole zakładki
+    var w0 = warstwaPoId(am.uprawy[0].warstwa) || {};
     cel.querySelector('.rolnik-analiza-opis').innerHTML = (am.opis ? '<div class="rolnik-opis">' + am.opis + '</div>' : '') +
       (w0.data ? '<div class="rolnik-data">' + w0.data + '</div>' : '');
     var suwak = cel.querySelector('.rolnik-przezr input');
@@ -622,7 +579,7 @@
       if (aktywna.indexOf('analiza_') === 0) { aktywna = ''; A.ukryjObraz(); }
       leg.innerHTML = ''; odswiezPunkt(); return;
     }
-    odznaczDane();                         // mapa pokazuje jedną warstwę naraz
+    odznaczDane();
     var u = uprawaPoId(am, uprawa), w = warstwaPoId(u.warstwa);
     aktywna = w.id;
     leg.innerHTML = '<i>Loading…</i>';
@@ -663,7 +620,6 @@
     }).join('');
   }
 
-  // klasa jednego kryterium: przedziały (od włącznie, do wyłącznie, null = bez granicy) albo grupy typów gleb
   function klasaKryterium(k, uprawa, v) {
     if (!v) return null;
     if (k.grupy) {
@@ -681,7 +637,6 @@
     return null;
   }
 
-  // suma punktów dla uprawy; brak kryterium niewymaganego (NDDI) -> wynik przeskalowany do maks_punktow
   function wynikUprawy(am, uprawa, wart) {
     var suma = 0, maks = 0, komplet = true;
     var wiersze = am.kryteria.map(function (k) {
@@ -724,7 +679,6 @@
       P.pkt.lng.toFixed(4) + '° E</small></div>';
     if (!P.gotowe) { el.innerHTML = h + '<i>Loading…</i>'; return; }
 
-    // wszystkie uprawy: suma punktów i klasa końcowa
     h += '<table class="rolnik-tab rolnik-analiza-tab"><tr><th>Crop</th><th>Score</th><th>Hazard</th></tr>';
     am.uprawy.forEach(function (u) {
       var r = wynikUprawy(am, u.id, P.wart);
@@ -734,7 +688,6 @@
     h += '</table>';
     if (!uprawaAnalizy) { el.innerHTML = h + '<div class="rolnik-stopka">Select a crop above to see the points for each criterion.</div>'; return; }
 
-    // wybrana uprawa: rozbicie na kryteria
     var u = uprawaPoId(am, uprawaAnalizy), r = wynikUprawy(am, uprawaAnalizy, P.wart);
     h += '<div class="rolnik-sekcja">' + u.nazwa + ' – points per criterion</div>' +
       '<table class="rolnik-tab rolnik-analiza-tab"><tr><th>Criterion</th><th>Value</th><th>Class</th><th>Points</th></tr>';
@@ -756,11 +709,9 @@
     el.innerHTML = h;
   }
 
-  // ================================================================== start
-
   function znajdzMape() {
     var kandydat = null;
-    try { if (typeof map !== 'undefined') kandydat = map; } catch (e) { /* brak zmiennej */ }
+    try { if (typeof map !== 'undefined') kandydat = map; } catch (e) {  }
     var jestOL = function (m) { return window.ol && ol.Map && m instanceof ol.Map; };
     var jestL = function (m) { return window.L && L.Map && m instanceof L.Map; };
     if (kandydat && jestOL(kandydat)) return adapterOL(kandydat);
@@ -769,12 +720,11 @@
       try {
         if (jestOL(window[k])) return adapterOL(window[k]);
         if (jestL(window[k])) return adapterLeaflet(window[k]);
-      } catch (e) { /* pomijamy */ }
+      } catch (e) {  }
     }
     return null;
   }
 
-  // wartość warstwy w punkcie (lon, lat) - dla panelu Final analysis (resources/analiza-cdi.js)
   window.rolnikMeta = function () { return meta; };
   window.rolnikWartosc = function (id, lon, lat) {
     if (!meta) return Promise.resolve(null);
@@ -800,7 +750,7 @@
 
   (function czekaj(proby) {
     var gotowe = false;
-    try { gotowe = typeof map !== 'undefined' && !!map; } catch (e) { /* brak */ }
+    try { gotowe = typeof map !== 'undefined' && !!map; } catch (e) {  }
     if (gotowe || proby > 100) return start();
     setTimeout(function () { czekaj(proby + 1); }, 100);
   })(0);

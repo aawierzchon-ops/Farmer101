@@ -1,15 +1,10 @@
-// Wspólna wyszukiwarka: adresy (Nominatim OSM) + działki ewidencyjne (ULDK GUGiK)
-// Działki: pełny identyfikator (np. 141201_1.0001.6509) albo "obręb numer" (np. Zakrzew 10)
-// Adresy: dowolny tekst (np. Mińsk Mazowiecki, Warszawska 1)
 (function () {
   var ULDK_URL = 'https://uldk.gugik.gov.pl/';
   var NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 
-  // Usuń dotychczasową wyszukiwarkę adresów z qgis2web – zastępuje ją ta poniżej
   var oldGeocoder = document.querySelector('.photon-geocoder-autocomplete');
   if (oldGeocoder) { oldGeocoder.parentNode.removeChild(oldGeocoder); }
 
-  // ---------- Warstwa wyników ----------
   function parcelStyle(feature) {
     return new ol.style.Style({
       stroke: new ol.style.Stroke({ color: '#e60000', width: 3 }),
@@ -38,13 +33,11 @@
   });
   map.addLayer(resultLayer);
 
-  // zamknięcie dymka (×) usuwa też obrys i numer działki z mapy
   var zamykacz = document.getElementById('popup-closer');
   if (zamykacz) {
     zamykacz.addEventListener('click', function () { resultLayer.getSource().clear(); });
   }
 
-  // ---------- Zapytania ----------
   function query(base, params) {
     return base + '?' + Object.keys(params).map(function (k) {
       return k + '=' + encodeURIComponent(params[k]);
@@ -98,7 +91,6 @@
     }).catch(function () { return []; });
   }
 
-  // ---------- UI ----------
   var wrapper = document.createElement('div');
   wrapper.className = 'unified-search ol-unselectable ol-control';
 
@@ -150,7 +142,6 @@
     return f;
   }
 
-  // ---------- Dymek z informacjami o działce (używa popupu qgis2web) ----------
   function esc(t) {
     var d = document.createElement('div');
     d.textContent = t == null ? '' : String(t);
@@ -163,14 +154,13 @@
       ha.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + ' ha)';
   }
 
-  // Dymek składa się z części „działka” i części dodatkowej (np. dane z dodatku rolnik/rolnik.js)
   var popupParts = { parcel: '', extra: '' }, popupCoord = null;
 
   function renderPopup() {
     if (typeof content === 'undefined' || typeof overlayPopup === 'undefined' || !popupCoord) { return; }
     content.innerHTML = popupParts.parcel + popupParts.extra;
     container.style.display = 'block';
-    overlayPopup.setPosition(undefined);   // ponowne dopasowanie widoku (autoPan) po zmianie treści
+    overlayPopup.setPosition(undefined);
     overlayPopup.setPosition(popupCoord);
   }
 
@@ -180,7 +170,6 @@
     renderPopup();
   }
 
-  // Interfejs dla innych skryptów: dopisanie sekcji pod informacją o działce
   window.mapPopup = {
     setExtra: function (html) { popupParts.extra = html || ''; renderPopup(); }
   };
@@ -212,14 +201,12 @@
     showPopup(html, coord);
   }
 
-  // Kliknięcie na mapie – identyfikacja działki w tym miejscu
   var clickId = 0;
-  // dla panelu „Final analysis” (resources/analiza-cdi.js)
   window.mapParcels = { parcelAt: parcelAt };
 
   map.on('singleclick', function (evt) {
     if (typeof measuring !== 'undefined' && measuring) { return; }
-    if (window.analizaCDI && window.analizaCDI.zaznaczanie) { return; }   // zaznaczanie działek do analizy
+    if (window.analizaCDI && window.analizaCDI.zaznaczanie) { return; }
     var id = ++clickId;
     var coord = evt.coordinate;
     var ll = ol.proj.toLonLat(coord, map.getView().getProjection());
@@ -291,7 +278,6 @@
     Promise.all([searchParcels(q), searchAddresses(q)]).then(function (res) {
       if (id !== searchId) { return; }
       var parcels = res[0], addresses = res[1];
-      // Jednoznaczny identyfikator działki – od razu pokaż
       if (parcels.length === 1 && /^\d{6}_\d/.test(q)) { select(parcels[0]); return; }
       render(parcels, addresses);
     });

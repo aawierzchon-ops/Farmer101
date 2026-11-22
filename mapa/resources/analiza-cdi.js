@@ -1,21 +1,5 @@
-/*
- * Analiza zaznaczonych działek – zakładki „Final analysis” (wynik końcowy) i „Detailed data” (parametry).
- *
- * „Final analysis”: „Select parcels” – kliknięcie mapy dodaje działkę (ULDK GUGiK), ponowne – usuwa.
- * Wybór uprawy i daty, „Calculate” – dopiero wtedy pobierane są dane wszystkich parametrów dla każdej działki:
- *   - ERA5 / ERA5-Land (Open-Meteo, od 1991 r.): opad, ET0, wilgotność gleby 0–7 i 0–100 cm, temperatura gleby 0–7 cm,
- *   - Sentinel-2 L2A (Planetary Computer): NDVI, NDWI, NDDI w obrysie działki (60 dni przed datą) i te same
- *     tygodnie w latach 2018–(rok-1) do anomalii NDDI,
- *   - gleba (warstwy SoilGrids z mapy): gatunek gleby, porowatość.
- * Wyniki:
- *   - „Detailed data”: każdy parametr osobno (dla działek i średnia ważona powierzchnią dla obszaru),
- *   - „Final analysis”: suma punktów wg kryteriów analizy wielokryterialnej (skrypty/analiza_mapa.py,
- *     meta.zrodla.analiza) -> klasa zagrożenia I–IV, oraz wskaźnik suszy CDI i ocena wg Dz.U. 2019 poz. 739.
- *
- * CDI (schemat European Drought Observatory, NDDI zamiast fAPAR):
- *   Watch = SPI-3 < −1 lub SPI-1 < −2 lub KBW poniżej progu z rozporządzenia; Warning = Watch i SMA < −1;
- *   Alert = Warning i anomalia NDDI > +1 (anomalia liczona tylko w IV–IX i przy NDVI ≥ 0,3).
- */
+
+
 (function () {
   'use strict';
   if (typeof map === 'undefined' || !window.ol) return;
@@ -25,8 +9,6 @@
   var PC = 'https://planetarycomputer.microsoft.com/api';
   var OPEN_METEO = 'https://archive-api.open-meteo.com/v1/archive';
 
-  // ---------- Dz.U. 2019 poz. 739, załącznik: wartości KBW [mm] oznaczające suszę ----------
-  // [uprawa][kategoria gleby] -> 14 okresów sześciodekadowych; null = „x” lub „-” w tabeli
   var PROGI_KBW = {
     "Zboża ozime": {"I":[-129,-132,-137,-145,-154,-165,-180,-199,-220,null,null,null,null,null],"II":[-150,-153,-158,-166,-175,-186,-201,-220,-241,null,null,null,null,null],"III":[-188,-191,-196,-204,-213,-224,-239,-258,-279,null,null,null,null,null],"IV":[-215,-218,-223,-231,-240,-251,-266,-285,-306,null,null,null,null,null]},
     "Zboża jare": {"I":[-125,-127,-130,-135,-142,-153,-169,-186,-207,null,null,null,null,null],"II":[-144,-146,-149,-154,-161,-172,-188,-205,-226,null,null,null,null,null],"III":[-174,-176,-179,-184,-191,-202,-218,-235,-256,null,null,null,null,null],"IV":[-194,-196,-199,-204,-211,-222,-238,-255,-276,null,null,null,null,null]},
@@ -46,14 +28,12 @@
   var OKRESY = [['03-21', '05-20'], ['04-01', '05-31'], ['04-11', '06-10'], ['04-21', '06-20'], ['05-01', '06-30'],
     ['05-11', '07-10'], ['05-21', '07-20'], ['06-01', '07-31'], ['06-11', '08-10'], ['06-21', '08-20'],
     ['07-01', '08-31'], ['07-11', '09-10'], ['07-21', '09-20'], ['08-01', '09-30']];
-  // gatunek gleby (symbol z warstwy „Soil type”, np. „Sandy loam (pgl)”) -> kategoria gleby wg rozporządzenia
   var KATEGORIA_GATUNKU = {
     'pl': 'I', 'plp': 'I', 'ps': 'I', 'psp': 'I',
     'pgl': 'II', 'pglp': 'II', 'pgm': 'II', 'pgmp': 'II',
     'gl': 'III', 'glp': 'III', 'płg': 'III', 'płz': 'III', 'płp': 'III',
     'gs': 'IV', 'gsp': 'IV', 'gc': 'IV', 'gcp': 'IV', 'płi': 'IV', 'i': 'IV', 'ip': 'IV'
   };
-  // uprawy analizy wielokryterialnej -> uprawa w tabeli rozporządzenia
   var UPRAWA_KBW = { pszenica_jara: 'Zboża jare', pszenica_ozima: 'Zboża ozime', ziemniak: 'Ziemniaki',
     kukurydza: 'Kukurydza na ziarno' };
   var UPRAWY_DOMYSLNE = [{ id: 'pszenica_jara', nazwa: 'Spring wheat' }, { id: 'pszenica_ozima', nazwa: 'Winter wheat' },
@@ -62,13 +42,12 @@
     { nazwa: 'No drought', kolor: '#2e7d32' }, { nazwa: 'Watch', kolor: '#f9a825' },
     { nazwa: 'Warning', kolor: '#ef6c00' }, { nazwa: 'Alert', kolor: '#c62828' }
   ];
-  var KOLORY_KLAS = ['#1a9641', '#ffd92f', '#f46d43', '#b2182b'];   // klasy zagrożenia I–IV (jak w rolnik.js)
+  var KOLORY_KLAS = ['#1a9641', '#ffd92f', '#f46d43', '#b2182b'];
   var RZYM = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 
   var stan = { zaznaczanie: false, dzialki: [] };
-  window.analizaCDI = stan;   // parcel-search.js i rolnik.js nie otwierają dymka, gdy zaznaczanie jest włączone
+  window.analizaCDI = stan;
 
-  // ------------------------------------------------------------------ style
   var css = document.createElement('style');
   css.textContent =
     '.cdi-przyciski{display:flex;gap:6px;margin:2px 0 6px}' +
@@ -114,7 +93,6 @@
     '.cdi-zaznaczanie .ol-viewport{cursor:copy}';
   document.head.appendChild(css);
 
-  // ------------------------------------------------------------------ skala kolorów: 0 = dobrze (zielony) … 1 = źle (czerwony)
   var SKALA = [[26, 150, 65], [166, 217, 106], [255, 217, 47], [253, 174, 97], [215, 25, 28]];
   function kolorSkali(t, alfa) {
     t = Math.min(Math.max(isFinite(t) ? t : 0, 0), 1) * (SKALA.length - 1);
@@ -123,31 +101,25 @@
     return alfa === undefined ? 'rgb(' + c.join(',') + ')' : 'rgba(' + c.join(',') + ',' + alfa + ')';
   }
   var GRADIENT = 'linear-gradient(to right,' + SKALA.map(function (c) { return 'rgb(' + c.join(',') + ')'; }).join(',') + ')';
-  // wartość w kolorowej plakietce wg udziału punktów zagrożenia t (0 = dobrze, 1 = źle)
   function ocena(tekst, t) {
     if (!isFinite(t)) return tekst;
     return '<span class="cdi-ocena' + (t > 0.3 && t < 0.7 ? ' jasna' : '') + '" style="background:' + kolorSkali(t) + '">' + tekst + '</span>';
   }
-  // pasek skali z zaznaczonym wynikiem
   function pasekSkali(t, lewy, prawy) {
     return '<div class="cdi-skala" style="background:' + GRADIENT + '">' + (isFinite(t) ? '<i style="left:' + (100 * t).toFixed(1) + '%"></i>' : '') +
       '</div><div class="cdi-skala-opis"><span>' + lewy + '</span><span>' + prawy + '</span></div>';
   }
-  // udział punktów zagrożenia działki (0 = dobrze, 1 = źle)
   function ocenaDzialki(d) {
     var am = analizaMeta(), p = d && d.wynik && d.wynik.punkty;
     return am && p && p.wynik !== null ? p.wynik / am.maks_punktow : NaN;
   }
 
-  // ------------------------------------------------------------------ warstwa zaznaczonych działek
-  // po obliczeniu działka ma kolor wg wyniku końcowego: zielony = dobrze … czerwony = źle
   function stylDzialki(f) {
-    var d = f.get('dzialka'), czas = d && isFinite(d.wynikCzasu);   // data wybrana na osi czasu
+    var d = f.get('dzialka'), czas = d && isFinite(d.wynikCzasu);
     var t = czas ? d.wynikCzasu / analizaMeta().maks_punktow : ocenaDzialki(d), jest = isFinite(t);
     var kolor = jest ? kolorSkali(t) : '#1565c0', mozaika = !czas && !!(d && d.warstwaPikseli);
     return new ol.style.Style({
       stroke: new ol.style.Stroke({ color: mozaika ? 'rgba(0,0,0,0.75)' : kolor, width: mozaika ? 2 : 3 }),
-      // z mozaiką pikseli wypełnienie jest przezroczyste – kolory pokazują piksele 10 m
       fill: new ol.style.Fill({ color: mozaika ? 'rgba(0,0,0,0)' : jest ? kolorSkali(t, 0.55) : 'rgba(21,101,192,0.2)' }),
       text: new ol.style.Text({
         text: d ? d.numer + (jest ? '\n' + (czas ? Math.round(d.wynikCzasu) : d.wynik.punkty.wynik) + ' pts' : '') : '',
@@ -158,14 +130,12 @@
   }
   var zrodlo = new ol.source.Vector();
   map.addLayer(new ol.layer.Vector({ source: zrodlo, zIndex: 999, style: stylDzialki }));
-  // mozaiki pikseli 10 m (po jednej warstwie obrazu na działkę), pod obrysami działek
   var grupaPikseli = new ol.layer.Group({ zIndex: 998 });
   map.addLayer(grupaPikseli);
   function usunMozaike(d) {
     if (d.warstwaPikseli) { grupaPikseli.getLayers().remove(d.warstwaPikseli); d.warstwaPikseli = null; }
   }
 
-  // ------------------------------------------------------------------ panele
   var tresc = document.querySelector('.panel-analiza-koncowa');
   var szczegoly = document.querySelector('.panel-szczegoly');
   if (!tresc || !szczegoly) return;
@@ -194,7 +164,7 @@
     }).join('');
   }
   wypelnijUprawy();
-  (function czekajNaMete(n) {            // rolnik.js wczytuje meta.json asynchronicznie
+  (function czekajNaMete(n) {
     if (analizaMeta()) { wypelnijUprawy(); return; }
     if (n < 100) setTimeout(function () { czekajNaMete(n + 1); }, 200);
   })(0);
@@ -257,7 +227,6 @@
     wyczyscWyniki();
   }
 
-  // ------------------------------------------------------------------ zaznaczanie na mapie
   map.on('singleclick', function (evt) {
     if (!stan.zaznaczanie || liczenie) return;
     var trafiona = null;
@@ -295,7 +264,6 @@
     zrodlo.addFeature(feature);
     stan.dzialki.push(d);
     wyczyscWyniki();
-    // gatunek gleby z warstwy mapy – tylko po to, żeby od razu ustawić kategorię gleby na liście
     if (window.rolnikWartosc) {
       window.rolnikWartosc('gleba_klasa', d.lon, d.lat).then(function (v) {
         if (v && v.tekst) { d.gleba = v.tekst; d.kategoria = kategoriaGleby(v.tekst) || d.kategoria; odswiezListe(); }
@@ -308,10 +276,9 @@
     return m ? KATEGORIA_GATUNKU[m[1].trim().toLowerCase()] : null;
   }
 
-  // ------------------------------------------------------------------ ERA5 / ERA5-Land (Open-Meteo)
   var klimatCache = {};
   function daneKlimatu(lon, lat) {
-    var klucz = lon.toFixed(1) + ',' + lat.toFixed(1);    // sąsiednie działki dzielą jeden węzeł ERA5
+    var klucz = lon.toFixed(1) + ',' + lat.toFixed(1);
     if (klimatCache[klucz]) return klimatCache[klucz];
     var url = OPEN_METEO + '?latitude=' + lat.toFixed(3) + '&longitude=' + lon.toFixed(3) +
       '&start_date=' + OD_ROKU + '-01-01&end_date=' + dzis +
@@ -359,7 +326,6 @@
     var smX = okno(k.sm, i1, SMA_DNI, false), smH = zLat(k.sm, SMA_DNI, false), smS = srednia(smH);
     var smSd = Math.sqrt(smH.reduce(function (a, b) { return a + (b - smS) * (b - smS); }, 0) / (smH.length - 1));
 
-    // KBW: ostatni zakończony okres sześciodekadowy w roku daty analizy (po sezonie – ostatni okres roku)
     var kbw = null;
     for (var o = OKRESY.length - 1; o >= 0; o--) {
       var od = rokK + '-' + OKRESY[o][0], doD = rokK + '-' + OKRESY[o][1];
@@ -379,7 +345,6 @@
     };
   }
 
-  // SPI: rozkład gamma (estymator Thoma) dopasowany do sum z poprzednich lat, z prawdopodobieństwem zera
   function spiZGammy(x, hist) {
     if (x === null || hist.length < 10) return NaN;
     var dod = hist.filter(function (v) { return v > 0; }), q = 1 - dod.length / hist.length;
@@ -427,10 +392,9 @@
     return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
   }
 
-  // ------------------------------------------------------------------ Sentinel-2: NDVI, NDWI, NDDI i anomalia NDDI
   var NDVI_X = '(B08-B04)/(B08+B04)', NDWI_X = '(B08-B11)/(B08+B11)';
   var WYRAZENIA = [NDVI_X, NDWI_X, '(' + NDVI_X + '-' + NDWI_X + ')/(' + NDVI_X + '+' + NDWI_X + ')',
-    'where((SCL>=4)&(SCL<=6),1.0,0.0)'];   // udział czystych pikseli (SCL 4 roślinność, 5 gleba, 6 woda)
+    'where((SCL>=4)&(SCL<=6),1.0,0.0)'];
 
   function przesun(data, dni) { return new Date(new Date(data + 'T12:00:00Z').getTime() + dni * 864e5).toISOString().slice(0, 10); }
 
@@ -456,7 +420,6 @@
       .then(function (w) {
         var ok = w.filter(function (s) { return s && s.czyste >= NDDI_CZYSTE && isFinite(s.nddi); });
         var pole = function (k) { return srednia(ok.map(function (s) { return s[k]; })); };
-        // bezchmurne sceny od najnowszej – do mozaiki pikseli
         var lista = ok.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; });
         return { nddi: pole('nddi'), ndvi: pole('ndvi'), ndwi: pole('ndwi'), sceny: ok.length, listaScen: lista };
       });
@@ -514,8 +477,6 @@
     });
   }
 
-  // ------------------------------------------------------------------ punkty wg kryteriów analizy wielokryterialnej
-  // (te same kryteria i progi co skrypty/analiza_mapa.py, z meta.zrodla.analiza)
   function klasaKryterium(k, uprawa, v) {
     if (!v) return null;
     if (k.grupy) {
@@ -558,10 +519,6 @@
     return alert ? 3 : warning ? 2 : watch ? 1 : 0;
   }
 
-  // ------------------------------------------------------------------ mozaika pikseli 10 m (Sentinel-2)
-  // Dla każdej działki: siatka ok. 10 × 10 m w EPSG:4326 na prostokącie działki, piksele wewnątrz obrysu.
-  // NDDI i NDVI z PIKSELE_SCEN najnowszych bezchmurnych scen (mediana na piksel, bez chmur wg SCL).
-  // Punkty piksela = kryteria działki (gleba, porowatość, temperatura, woda – uśrednione) + NDDI piksela.
   var PIKSEL_M = 10, MAKS_PIKSELI = 200000, PIKSELE_SCEN = 3, PROBKI_GLEBY = 25;
   var WYR_PIKSELI = [NDVI_X, '(' + NDVI_X + '-' + NDWI_X + ')/(' + NDVI_X + '+' + NDWI_X + ')',
     'where((SCL>=4)&(SCL<=6),1.0,0.0)'];
@@ -573,7 +530,7 @@
     var w = Math.max(1, Math.ceil((e[2] - e[0]) / (PIKSEL_M / (111320 * Math.cos(lat * Math.PI / 180)))));
     var h = Math.max(1, Math.ceil((e[3] - e[1]) / (PIKSEL_M / 110574)));
     var k = Math.sqrt(w * h / MAKS_PIKSELI);
-    if (k > 1) { w = Math.ceil(w / k); h = Math.ceil(h / k); }     // bardzo duże działki – rzadsza siatka
+    if (k > 1) { w = Math.ceil(w / k); h = Math.ceil(h / k); }
     var maska = new Uint8Array(w * h), n = 0, dx = (e[2] - e[0]) / w, dy = (e[3] - e[1]) / h;
     for (var r = 0; r < h; r++) {
       for (var c = 0; c < w; c++) {
@@ -584,7 +541,6 @@
     return d.siatka;
   }
 
-  // plik .npy (NumPy): nagłówek + dane float64/float32, kształt (pasma, wiersze, kolumny)
   function czytajNpy(buf) {
     var b = new Uint8Array(buf), dv = new DataView(buf), wersja = b[6];
     var dl = wersja >= 2 ? dv.getUint32(8, true) : dv.getUint16(8, true), start = (wersja >= 2 ? 12 : 10);
@@ -611,7 +567,6 @@
     return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
   }
 
-  // NDDI i NDVI dla każdego piksela działki (mediana z kilku najnowszych bezchmurnych scen)
   function pikseleDzialki(d, rosl) {
     var sceny = (rosl.listaScen || []).slice(0, PIKSELE_SCEN);
     if (!sceny.length) return Promise.resolve(null);
@@ -634,8 +589,6 @@
     });
   }
 
-  // gleba uśredniona w obrębie działki: do PROBKI_GLEBY punktów wewnątrz obrysu z warstw SoilGrids;
-  // gatunek gleby – najczęstszy, porowatość – średnia
   function glebaDzialki(d) {
     if (!window.rolnikWartosc) return Promise.resolve({ gleba: null, porowatosc: NaN, probki: 0, typy: {} });
     var s = siatkaDzialki(d), punkty = [], krok = Math.max(1, Math.floor(s.n / PROBKI_GLEBY)), k = 0;
@@ -657,7 +610,6 @@
     });
   }
 
-  // punkty zagrożenia każdego piksela i obraz mozaiki na mapie
   function mozaikaDzialki(d, am, uprawa, wartDzialki) {
     var px = d.wynik.piksele;
     if (!px || !am) return;
@@ -696,9 +648,6 @@
     grupaPikseli.getLayers().push(d.warstwaPikseli);
   }
 
-  // ------------------------------------------------------------------ oś czasu: 12 miesięcy przed datą analizy, co 10 dni
-  // Dla każdej daty: wskaźniki ERA5 (z pobranej już serii dziennej) i NDDI/NDVI ze wszystkich bezchmurnych scen
-  // Sentinel-2 z 60 dni przed datą; punkty zagrożenia tymi samymi kryteriami co wynik końcowy.
   var OS_DNI = 365, OS_KROK = 10;
   var seria = null;
   var PARAMETRY_OSI = [
@@ -713,7 +662,6 @@
     { id: 'sma', nazwa: 'SMA – soil moisture anomaly', miejsca: 2 }
   ];
 
-  // wszystkie bezchmurne sceny działki w okresie (NDDI i NDVI w obrysie)
   function scenyOkresu(d, od, doD, postep) {
     var klucz = 'seria:' + od + '/' + doD;
     if (d.nddiCache[klucz]) return d.nddiCache[klucz];
@@ -846,7 +794,6 @@
     }
     os.querySelector('.cdi-os-suwak').value = idx;
 
-    // wykres
     var c = os.querySelector('canvas'), g = c.getContext('2d'), W = c.width, H = c.height, L = 44, R = 8, T = 10, B = 26;
     var y = S.obszar[S.param], par = PARAMETRY_OSI.filter(function (p) { return p.id === S.param; })[0];
     var wart = y.filter(isFinite), lo, hi;
@@ -861,7 +808,7 @@
     var Y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
     g.clearRect(0, 0, W, H);
     g.font = '18px system-ui, sans-serif';
-    if (S.param === 'punkty' && am) {        // tło: klasy zagrożenia
+    if (S.param === 'punkty' && am) {
       am.klasy.forEach(function (k, i) {
         g.fillStyle = kolorSkali((k.od + k.do) / 2 / am.maks_punktow, 0.18);
         g.fillRect(L, Y(Math.min(hi, k.do + 0.5)), W - L - R, Y(Math.max(lo, k.od - 0.5)) - Y(Math.min(hi, k.do + 0.5)));
@@ -873,7 +820,6 @@
       g.fillText(v.toFixed(par.miejsca === 0 || Math.abs(hi - lo) > 20 ? 0 : 1), 2, Y(v) + 6);
     });
     if (lo < 0 && hi > 0) { g.strokeStyle = '#888'; g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(W - R, Y(0)); g.stroke(); }
-    // miesiące na osi X
     g.fillStyle = '#666';
     var ostX = -99;
     S.daty.forEach(function (t, i) {
@@ -882,7 +828,6 @@
         ostX = X(i);
       }
     });
-    // linia i punkty (kolor punktu = wynik zagrożenia w tej dacie)
     g.strokeStyle = '#2e5e2a'; g.lineWidth = 2.5; g.beginPath();
     var start = true;
     y.forEach(function (v, i) {
@@ -901,7 +846,6 @@
     g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1.5; g.setLineDash([5, 4]);
     g.beginPath(); g.moveTo(X(idx), T); g.lineTo(X(idx), H - B); g.stroke(); g.setLineDash([]);
 
-    // odczyt dla wybranej daty
     var o = function (id) { return S.obszar[id][idx]; }, pk0 = o('punkty');
     var kl = am && isFinite(pk0) ? klasaZagrozenia(am, Math.round(pk0)) : null;
     os.querySelector('.cdi-os-odczyt').innerHTML = '<b>' + S.daty[idx] + '</b> · Hazard ' +
@@ -909,13 +853,11 @@
       'NDDI ' + f2(o('nddi')) + ' · NDVI ' + f2(o('ndvi')) + ' · water ' + f0(o('woda')) + '% · soil ' + f1(o('tGleby')) + ' °C<br>' +
       'KBW ' + f0(o('kbw')) + ' mm · SPI-1 ' + f2(o('spi1')) + ' · SPI-3 ' + f2(o('spi3')) + ' · SMA ' + f2(o('sma'));
 
-    // mapa: działki w kolorze wyniku z tej daty (mozaika pikseli dotyczy tylko daty analizy)
     var d0 = S.dzialki[0] && S.dzialki[0].d, naDacieAnalizy = !!(d0 && d0.wynik && d0.wynik.kl.data === S.daty[idx]);
     S.dzialki.forEach(function (x) { x.d.wynikCzasu = naDacieAnalizy ? NaN : x.wart.punkty[idx]; x.d.feature.changed(); });
     grupaPikseli.setVisible(naDacieAnalizy);
   }
 
-  // ------------------------------------------------------------------ obliczenia
   function oblicz() {
     var data = poleData.value || dzis, uprawa = poleUprawa.value, uprawaKbw = UPRAWA_KBW[uprawa] || 'Zboża jare';
     var dane = stan.dzialki.slice();
@@ -981,7 +923,6 @@
       esc(am ? am.klasy[klasa - 1].nazwa : RZYM[klasa]) + '</span>';
   }
 
-  // ------------------------------------------------------------------ „Final analysis”: wynik końcowy
   function pokazWynik(dane, uprawa) {
     var am = analizaMeta(), ha = dane.reduce(function (a, d) { return a + d.ha; }, 0), dataD = dane[0].wynik.kl.data;
     var h = '';
@@ -1004,7 +945,6 @@
       h += '<div class="cdi-uwaga">Multi-criteria scoring unavailable (no analysis data on the map or missing soil data).</div>';
     }
 
-    // susza: CDI i ocena wg rozporządzenia
     var cdi = poziomCDI(srW(dane, function (d) { return d.wynik.kl.spi1.wartosc; }), srW(dane, function (d) { return d.wynik.kl.spi3.wartosc; }),
       srW(dane, function (d) { return d.wynik.kl.sma.wartosc; }), false, srW(dane, function (d) { return d.wynik.rosl.z; }));
     var haKbw = dane.reduce(function (a, d) { return a + (d.wynik.kl.kbw && d.wynik.kl.kbw.susza ? d.ha : 0); }, 0);
@@ -1033,7 +973,6 @@
     przygotujOs(dane, uprawa);
   }
 
-  // ------------------------------------------------------------------ „Detailed data”: każdy parametr osobno
   function sekcja(tytul, opis, kolumny, dane) {
     var h = '<div class="cdi-sekcja">' + tytul + (opis ? ' <small>' + opis + '</small>' : '') + '</div><table class="cdi-tab"><tr>' +
       (dane.length > 1 ? '<th>Parcel</th>' : '') + kolumny.map(function (k) { return '<th>' + k[0] + '</th>'; }).join('') + '</tr>';
@@ -1113,7 +1052,6 @@
         sr(function (d) { return d.wynik.rosl.z; }, f2)],
       ['Years', function (d) { return d.wynik.rosl.lat || 0; }]
     ], dane);
-    // zmienność wewnątrz działki (mozaika pikseli 10 m)
     var procKlasy = function (k) {
       return function (d) {
         var p = d.wynik.piksele;

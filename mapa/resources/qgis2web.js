@@ -11,12 +11,9 @@ var map = new ol.Map({
     })
 });
 
-//initial view - epsg:3857 coordinates if not "Match project CRS"
-// widok startowy: Polska, środek w Warszawie (na wąskim ekranie telefonu jeden poziom dalej)
 map.getView().setCenter(ol.proj.fromLonLat([21.01, 52.23], map.getView().getProjection()));
 map.getView().setZoom(window.innerWidth < 600 ? 5.6 : 6.6);
 
-//change cursor
 function pointerOnFeature(evt) {
     if (evt.dragging) {
         return;
@@ -39,13 +36,9 @@ function styleCursorMove() {
 }
 styleCursorMove();
 
-////small screen definition
     var hasTouchScreen = map.getViewport().classList.contains('ol-touch');
     var isSmallScreen = window.innerWidth < 650;
 
-////controls container
-
-    //top left container
     var topLeftContainer = new ol.control.Control({
         element: (() => {
             var topLeftContainer = document.createElement('div');
@@ -55,7 +48,6 @@ styleCursorMove();
     });
     map.addControl(topLeftContainer)
 
-    //bottom left container
     var bottomLeftContainer = new ol.control.Control({
         element: (() => {
             var bottomLeftContainer = document.createElement('div');
@@ -65,7 +57,6 @@ styleCursorMove();
     });
     map.addControl(bottomLeftContainer)
   
-    //top right container
     var topRightContainer = new ol.control.Control({
         element: (() => {
             var topRightContainer = document.createElement('div');
@@ -75,7 +66,6 @@ styleCursorMove();
     });
     map.addControl(topRightContainer)
 
-    //bottom right container
     var bottomRightContainer = new ol.control.Control({
         element: (() => {
             var bottomRightContainer = document.createElement('div');
@@ -85,7 +75,6 @@ styleCursorMove();
     });
     map.addControl(bottomRightContainer)
 
-//popup
 var container = document.getElementById('popup');
 var content = document.getElementById('popup-content');
 var closer = document.getElementById('popup-closer');
@@ -115,20 +104,16 @@ var NO_POPUP = 0
 var ALL_FIELDS = 1
 
 function getPopupFields(layerList, layer) {
-    // Determine the index that the layer will have in the popupLayers Array,
-    // if the layersList contains more items than popupLayers then we need to
-    // adjust the index to take into account the base maps group
     var idx = layersList.indexOf(layer) - (layersList.length - popupLayers.length);
     return popupLayers[idx];
 }
 
-//highligth collection
 var collection = new ol.Collection();
 var featureOverlay = new ol.layer.Vector({
     map: map,
     source: new ol.source.Vector({
         features: collection,
-        useSpatialIndex: false // optional, might improve performance
+        useSpatialIndex: false
     }),
     style: [new ol.style.Style({
         stroke: new ol.style.Stroke({
@@ -139,8 +124,8 @@ var featureOverlay = new ol.layer.Vector({
             color: 'rgba(255,0,0,0.1)'
         }),
     })],
-    updateWhileAnimating: true, // optional, for instant visual feedback
-    updateWhileInteracting: true // optional, for instant visual feedback
+    updateWhileAnimating: true,
+    updateWhileInteracting: true
 });
 
 var doHighlight = true;
@@ -212,14 +197,12 @@ function onPointerMove(evt) {
     var clusterLength;
     var popupText = '<ul>';
 
-    // Collect all features and their layers at the pixel
     var featuresAndLayers = [];
     map.forEachFeatureAtPixel(pixel, function(feature, layer) {
         if (layer && feature instanceof ol.Feature && (layer.get("interactive") || layer.get("interactive") === undefined)) {
             featuresAndLayers.push({ feature, layer });
         }
     });
-
 
     for (var i = featuresAndLayers.length - 1; i >= 0; i--) {
         var feature = featuresAndLayers[i].feature;
@@ -436,10 +419,9 @@ function onSingleClickWMS(evt) {
                 var timeoutPromise = new Promise((resolve, reject) => {
                     setTimeout(() => {
                         reject(new Error('Timeout exceeded'));
-                    }, 5000); // (5 second)
+                    }, 5000);
                 });
 
-                // Function to try fetch with different option
                 function tryFetch(urls) {
                     if (urls.length === 0) {
                         return Promise.reject(new Error('All fetch attempts failed'));
@@ -452,11 +434,9 @@ function onSingleClickWMS(evt) {
                                 throw new Error('Fetch failed');
                             }
                         })
-                        .catch(() => tryFetch(urls.slice(1))); // Try next URL
+                        .catch(() => tryFetch(urls.slice(1)));
                 }
 
-                // List of URLs to try
-                // The first URL is the original, the second is the encoded version, and the third is the proxy
                 const urlsToTry = [
                     url,
                     encodeURIComponent(url),
@@ -475,7 +455,7 @@ function onSingleClickWMS(evt) {
                         setTimeout(() => {
                             var loaderIcon = document.querySelector('.roller-switcher');
                             if (loaderIcon) loaderIcon.remove();
-                        }, 500); // (0.5 second)
+                        }, 500);
                     });
             }
         }
@@ -485,18 +465,10 @@ function onSingleClickWMS(evt) {
 map.on('singleclick', onSingleClickFeatures);
 map.on('singleclick', onSingleClickWMS);
 
-//get container
 var topLeftContainerDiv = document.getElementById('top-left-container')
 var bottomLeftContainerDiv = document.getElementById('bottom-left-container')
 var topRightContainerDiv = document.getElementById('top-right-container')
 var bottomRightContainerDiv = document.getElementById('bottom-right-container')
-
-//title
-
-//abstract
-
-
-//geolocate
 
 	let isTracking = false;
 
@@ -558,8 +530,6 @@ var bottomRightContainerDiv = document.getElementById('bottom-right-container')
 	geolocateButton.addEventListener('click', handleGeolocate);
 	geolocateButton.addEventListener('touchstart', handleGeolocate);
 
-
-//measurement
 let measuring = false;
 
 	const measureButton = document.createElement('button');
@@ -571,7 +541,6 @@ let measuring = false;
 	measureControl.appendChild(measureButton);
 	map.getTargetElement().appendChild(measureControl);
 
-	// Event handler
 	function handleMeasure() {
 	  if (!measuring) {
 		selectLabel.style.display = "";
@@ -602,7 +571,6 @@ let measuring = false;
             return;
         }
         if (measuring) {
-            /** @type {string} */
             var helpMsg = 'Click to start drawing';
             if (sketch) {
                 var geom = (sketch.getGeometry());
@@ -642,22 +610,15 @@ let measuring = false;
 
 	var helpTooltipElement;
 
-
-
 	var helpTooltip;
 
 	var measureTooltipElement;
 
-
 	var measureTooltip;
-
 
 	var continueLineMsg = 'Click to continue drawing the line';
 
-
-
 	var continuePolygonMsg = "1click continue, 2click close";
-
 
 	var typeSelect = document.getElementById("type");
 	var typeSelectForm = document.getElementById("form_measure");
@@ -670,7 +631,7 @@ let measuring = false;
 
 	var measureLineStyle = new ol.style.Style({
 	  stroke: new ol.style.Stroke({ 
-		color: "rgba(0, 0, 255)", //blu
+		color: "rgba(0, 0, 255)",
 		lineDash: [10, 10],
 		width: 4
 	  }),
@@ -757,12 +718,12 @@ let measuring = false;
 
 	map.addLayer(measureLayer);
 
-	var draw; // global so we can remove it later
+	var draw;
 	function addInteraction() {
 	  var type = typeSelect.value;
 	  draw = new ol.interaction.Draw({
 		source: source,
-		type: /** @type {ol.geom.GeometryType} */ (type),
+		type:  (type),
 		style: function (feature) {
 				  return styleFunction(feature, type);
 				}
@@ -771,20 +732,18 @@ let measuring = false;
 	  var listener;
 	  draw.on('drawstart',
 		  function(evt) {
-			// set sketch
 			sketch = evt.feature;
 
-			/** @type {ol.Coordinate|undefined} */
 			var tooltipCoord = evt.coordinate;
 
 			listener = sketch.getGeometry().on('change', function(evt) {
 			  var geom = evt.target;
 			  var output;
 			  if (geom instanceof ol.geom.Polygon) {
-					  output = formatArea(/** @type {ol.geom.Polygon} */ (geom));
+					  output = formatArea( (geom));
 					  tooltipCoord = geom.getInteriorPoint().getCoordinates();
 					} else if (geom instanceof ol.geom.LineString) {
-					  output = formatLength(/** @type {ol.geom.LineString} */ (geom));
+					  output = formatLength( (geom));
 					  tooltipCoord = geom.getLastCoordinate();
 					}
 			  measureTooltipElement.innerHTML = output;
@@ -796,15 +755,12 @@ let measuring = false;
 		  function(evt) {
 			measureTooltipElement.className = 'tooltip tooltip-static';
 			measureTooltip.setOffset([0, -7]);
-			// unset sketch
 			sketch = null;
-			// unset tooltip so that a new one can be created
 			measureTooltipElement = null;
 			createMeasureTooltip();
 			ol.Observable.unByKey(listener);
 		  }, this);
 	}
-
 
 	function createHelpTooltip() {
 	  if (helpTooltipElement) {
@@ -820,8 +776,6 @@ let measuring = false;
 	  map.addOverlay(helpTooltip);
 	}
 
-
-
 	function createMeasureTooltip() {
 	  if (measureTooltipElement) {
 		measureTooltipElement.parentNode.removeChild(measureTooltipElement);
@@ -835,8 +789,6 @@ let measuring = false;
 	  });
 	  map.addOverlay(measureTooltip);
 	}
-
-
 
   var formatLength = function(line) {
     var length;
@@ -880,21 +832,15 @@ let measuring = false;
     parentElement.insertBefore(elementToMove, parentElement.firstChild);
   }
 
-
-
-
-  //Layer to represent the point of the geocoded address
   var geocoderLayer = new ol.layer.Vector({
       source: new ol.source.Vector(),
   });
   map.addLayer(geocoderLayer);
   var vectorSource = geocoderLayer.getSource();
 
-  //Variable used to store the coordinates of geocoded addresses
   var obj2 = {
   value: '',
   letMeKnow() {
-      //console.log(`Geocoded position: ${this.gcd}`);
   },
   get gcd() {
       return this.value;
@@ -944,7 +890,6 @@ let measuring = false;
       map.getView().setZoom(18);
   }
 
-
   var formatResult = function (feature, el) {
       var title = document.createElement("strong");
       el.appendChild(title);
@@ -987,28 +932,22 @@ let measuring = false;
       }
   }
 
-  // Function to show you can do something with the returned elements
   function myHandler(featureCollection) {
-      //console.log(featureCollection);
   }
 
-  // URL for API
   const url = {"Nominatim OSM": "https://nominatim.openstreetmap.org/search?format=geojson&addressdetails=1&",
   "France BAN": "https://api-adresse.data.gouv.fr/search/?"}
   var API_URL = "//api-adresse.data.gouv.fr";
 
-  // Create search by adresses component
   var containers = new Photon.Search({
     resultsHandler: myHandler,
     onSelected: onSelected,
     placeholder: "Search an address",
     formatResult: formatResult,
-    //url: API_URL + "/search/?",
     url: url["Nominatim OSM"],
     position: "topright",
 
   });
-
 
   var controlGeocoder = new AddDomControl(containers, {
     className: "photon-geocoder-autocomplete ol-unselectable ol-control",
@@ -1017,13 +956,11 @@ let measuring = false;
   var search = document.getElementsByClassName("photon-geocoder-autocomplete ol-unselectable ol-control")[0];
   search.style.display = "flex";
 
-  // Create the new button element
   var button = document.createElement("button");
   button.type = "button";
   button.id = "gcd-button-control";
   button.className = "gcd-gl-btn fa fa-search leaflet-control";
 
-  // Ajouter le bouton à l'élément parent
   search.insertBefore(button, search.firstChild);
   last = search.lastChild;
   last.style.display = "none";
@@ -1036,7 +973,6 @@ let measuring = false;
   });
   input = document.getElementsByClassName("photon-input")[0];
 
-
 var layerSwitcher = new ol.control.LayerSwitcher({
     tipLabel: "Layers",
     target: 'top-right-container',
@@ -1046,11 +982,6 @@ var layerSwitcher = new ol.control.LayerSwitcher({
 map.addControl(layerSwitcher);
     
 
-
-
-
-
-//attribution
 var bottomAttribution = new ol.control.Attribution({
   collapsible: false,
   collapsed: false,
@@ -1072,8 +1003,6 @@ map.once('rendercomplete', function() {
   }
 });
 
-
-
 var preDoHover = doHover;
 var preDoHighlight = doHighlight;
 var isPopupAllActive = false;
@@ -1094,37 +1023,29 @@ document.addEventListener('DOMContentLoaded', function() {
 	}
 });
 
-
-
     var zoomControl = document.getElementsByClassName('ol-zoom')[0];
     if (zoomControl) {
         topLeftContainerDiv.appendChild(zoomControl);
     }
-    //geolocate
     if (typeof geolocateControl !== 'undefined') {
         topLeftContainerDiv.appendChild(geolocateControl);
     }
-    //measure
     if (typeof measureControl !== 'undefined') {
         topLeftContainerDiv.appendChild(measureControl);
     }
-    //geocoder
     var searchbar = document.getElementsByClassName('photon-geocoder-autocomplete ol-unselectable ol-control')[0];
     if (searchbar) {
         topLeftContainerDiv.appendChild(searchbar);
     }
-    //search layer
     var searchLayerControl = document.getElementsByClassName('search-layer')[0];
     if (searchLayerControl) {
         topLeftContainerDiv.appendChild(searchLayerControl);
     }
-    //scale line
     var scaleLineControl = document.getElementsByClassName('ol-scale-line')[0];
     if (scaleLineControl) {
         scaleLineControl.className += ' ol-control';
         bottomLeftContainerDiv.appendChild(scaleLineControl);
     }
-    //attribution
     var attributionControl = document.getElementsByClassName('bottom-attribution')[0];
     if (attributionControl) {
         bottomRightContainerDiv.appendChild(attributionControl);
