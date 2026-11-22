@@ -72,7 +72,7 @@ locally. Do not commit them: on GitHub the workflow downloads the data and build
 
 ## Demo notes (Sunday)
 - **What to show:**
-  1. *Layers*: the drought hazard map of Poland for one crop, next to the NDDI and soil type layers.
+  1. *Layers*: the drought hazard map of Poland for one crop, next to the NDDI (Normalized difference drought index) and soil type layers.
   2. *Final analysis*: select a few parcels, pick a crop and a date, click **Calculate**. Show the hazard score and
      class, the CDI level, the 10 m map inside the parcels and the 12-month timeline.
 - **Key result / insight:** one drought score per parcel that combines a satellite drought index (NDDI), soil type,
