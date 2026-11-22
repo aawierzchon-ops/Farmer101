@@ -2,6 +2,10 @@
 
 **Track:** Weather risk  
 **Event:** [Field Under Pressure](https://geo-hackathon.g.location360.ag/) · 20-22 Nov 2026
+**Farmer101** is a web geoportal for farmers in Poland. It maps the agricultural drought hazard for spring wheat,
+winter wheat, potato and corn, both for the whole country and for single cadastral parcels. It combines satellite
+indices (Landsat 8/9, Sentinel-2), soil data (SoilGrids) and soil temperature and moisture (ERA5-Land), and it is
+rebuilt automatically every day. Nothing to install: open the link in a browser.
 
 ## Team
 | Name | Role | Contact |
@@ -28,12 +32,13 @@ the agricultural drought hazard of their parcels for spring wheat, winter wheat,
   validation of the thresholds, crops other than the four above.
 
 ## Data we use
-- [x] Weather: ERA5-Land / ERA5 reanalysis via Open-Meteo (soil temperature and moisture, precipitation, ET0);
+We did not use the organizers' S3 datasets; all data come from the public sources listed there.
+- Weather: ERA5-Land / ERA5 reanalysis via Open-Meteo (soil temperature and moisture, precipitation, ET0);
   Open-Meteo forecast for the current weather
-- [x] Satellite: Landsat 8 Collection 2 Level 2 (map layers), Sentinel-2 L2A (parcel analysis), both via Microsoft
+- Satellite: Landsat 8 Collection 2 Level 2 (map layers), Sentinel-2 L2A (parcel analysis), both via Microsoft
   Planetary Computer
-- [x] Soil: SoilGrids 2.0 (texture converted to Polish BN-78 groups, porosity)
-- [ ] Cropland: no crop-type map; parcel outlines come from the Polish cadastre (GUGiK KIEG / ULDK)
+- Soil: SoilGrids 2.0 (texture converted to Polish BN-78 groups, porosity)
+- Cropland: no crop-type map; parcel outlines come from the Polish cadastre (GUGiK KIEG / ULDK)
 - Notes / paths: no data files are committed. The workflow downloads the map data into `_dane/` and builds the site
   in `_site/`. Parcel data are downloaded in the browser. Details: [Map layers](#map-layers) and
   [Data sources](#data-sources).
