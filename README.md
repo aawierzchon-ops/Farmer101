@@ -318,7 +318,7 @@ SoilGrids. More water means a lower drought hazard.
 | KBW | Drought risk |
 |---|---|
 | < −0.1 | high |
-| −0.1 … 0.1 | low |
+| −0.1 - 0.1 | low |
 | > 0.1 | none |
 
 The CDI in the parcel analysis computes KBW in mm (precipitation − ET0) and compares it with the drought thresholds of
