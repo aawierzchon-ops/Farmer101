@@ -45,13 +45,13 @@ The published website needs nothing to install. To build it locally you need Pyt
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python skrypty/gleba_mapa.py   --wyjscie _dane
-python skrypty/landsat_mapa.py --wyjscie _dane
-python skrypty/era5_mapa.py    --wyjscie _dane
-python skrypty/analiza_mapa.py --dane _dane
-python skrypty/siatka.py       --polacz _dane
-python skrypty/strona.py --mapa mapa --dane _dane --wyjscie _site
-cd _site && python -m http.server 8000
+python skrypty/gleba_mapa.py
+python skrypty/landsat_mapa.py
+python skrypty/era5_mapa.py
+python skrypty/analiza_mapa.py
+python skrypty/siatka.py
+python skrypty/strona.py
+cd _site && python
 ```
 
 Then open http://localhost:8000. Do not open `index.html` by double-clicking it: the browser would then block loading the data.
