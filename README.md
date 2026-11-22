@@ -43,7 +43,7 @@ The published website needs nothing to install. To build it locally you need Pyt
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 python skrypty/gleba_mapa.py
 python skrypty/landsat_mapa.py
