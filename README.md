@@ -2,6 +2,7 @@
 
 **Track:** Weather risk  
 **Event:** [Field Under Pressure](https://geo-hackathon.g.location360.ag/) · 20-22 Nov 2026
+
 **Farmer101** is a web geoportal for farmers in Poland. It maps the agricultural drought hazard for spring wheat,
 winter wheat, potato and corn, both for the whole country and for single cadastral parcels. It combines satellite
 indices (Landsat 8/9, Sentinel-2), soil data (SoilGrids) and soil temperature and moisture (ERA5-Land), and it is
