@@ -422,7 +422,7 @@ regional picture but do not replace soil tests from a specific field.
 
 ## Data sources
 
-- **Landsat 8/9**: USGS, via Microsoft Planetary Computer
+- **Landsat 8**: Microsoft Planetary Computer
 - **Sentinel-2 L2A**: Copernicus / ESA, via Microsoft Planetary Computer
 - **ERA5, ERA5-Land**: Copernicus Climate Change Service / ECMWF, via Open-Meteo (CC BY 4.0, non-commercial use)
 - **SoilGrids 2.0**: ISRIC (CC BY 4.0)
