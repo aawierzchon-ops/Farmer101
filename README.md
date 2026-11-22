@@ -149,9 +149,9 @@ Scales follow the Polish Space Agency (POLSA).
 
 | Index | Range |
 |---|---|
-| NDVI, GNDVI, OSAVI, NDWI, NDDI | −1 … 1 |
-| NNI | 0.7 … 1.3 |
-| LST | 0 … 30 °C |
+| NDVI, GNDVI, OSAVI, NDWI, NDDI | −1 - 1 |
+| NNI | 0.7 - 1.3 |
+| LST | 0 - 30 °C |
 
 | Index | Value | Meaning |
 |---|---|---|
